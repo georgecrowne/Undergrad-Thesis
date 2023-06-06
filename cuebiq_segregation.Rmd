@@ -1,0 +1,204 @@
+---
+title: "Cuebiq Mobility Data"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(zipcodeR)
+library(ggmap)
+library(tidygeocoder)
+library(httr)
+library(data.table)
+library(cowplot)
+library(patchwork)
+```
+
+```{r}
+rm(list = ls())
+cuebiq_data = read.csv("Data/working/cuebiq_zip.csv")
+data = read.csv("Data/working/data_merged.csv")
+```
+
+# Find count for place type by county
+```{r}
+cols = cuebiq_data %>% select(
+  county,
+  state...14,
+  pcat,
+  nstays,
+  segregation
+)
+
+counties <- cols %>% 
+  group_by(county, state...14, pcat) %>% 
+  summarize_at(vars(segregation),funs(weighted.mean(., w=nstays, na.rm=TRUE)))
+
+counties <- rename(counties, "name" = "county")
+counties <- rename(counties, "state_fips" = "state...14")
+
+data <- counties %>% inner_join(data, by = c("name", "state_fips"))
+```
+
+```{r}
+entertainment <- subset(data, pcat == "Food" | pcat == "Outdoors & Recreation" | pcat == "Arts & Entertainment" | pcat == "Nightlife Spot")
+
+ggplot(entertainment,aes(x=segregation,y=ec_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Experienced Segregation") +
+  ylab("Economic Connectedness")
+
+ggsave("entertainment_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+food <- subset(data, pcat == "Food")
+nightlife <- subset(data, pcat == "Nightlife Spot")
+outdoors <- subset(data, pcat == "Outdoors & Recreation")
+college <- subset(data, pcat == "College & University")
+pro <- subset(data, pcat == "Professional & Other Places")
+residence <- subset(data, pcat == "Residence")
+shop <- subset(data, pcat == "Shop & Service")
+travel <- subset(data, pcat == "Travel & Transport")
+art <- subset(data, pcat == "Arts & Entertainment")
+
+df = food
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Food \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("food_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+
+df = nightlife
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Nightlife \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("nightlife_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+
+df = outdoors
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Outdoor \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("outdoor_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+df = college
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("College \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("college_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+df = residence
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Residence \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("residence_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+df = shop
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Shop & Service \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("shop_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+
+df = travel
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Travel & Transportation \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("travel_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+df = art
+lm1 <- lm(df$ec_county ~ df$segregation)
+lm2 <- lm(df$bias_grp_mem_county ~ df$segregation)
+lm3 <- lm(df$exposure_grp_mem_county ~ df$segregation)
+plot_summs(lm1, lm2, lm3,
+           robust = list("HC0","HC0", "HC0"),
+           coefs = c("Art & Entertainment \nPlaces" = "df$segregation"),
+           model.names =c("Economic Connectedness", "Friending Bias", "High-SES Exposure")) +
+           theme(legend.position="none")
+ggsave("art_seg_vs_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+
+ggplot(nightlife,aes(x=segregation,y=ec_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Segregation") +
+  ylab("Economic Connectedness")
+
+summary(lm(nightlife$ec_county ~ nightlife$segregation))
+
+# ggsave("place_density_vs_employment_density.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+
+ggplot(outdoors,aes(x=segregation,y=ec_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Segregation") +
+  ylab("Economic Connectedness")
+
+summary(lm(outdoors$ec_county ~ outdoors$segregation))
+
+# ggsave("place_density_vs_employment_density.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+outdoors <- subset(data, pcat == "Outdoors & Recreation")
+
+ggplot(outdoors,aes(x=segregation,y=ec_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Segregation") +
+  ylab("Economic Connectedness")
+
+summary(lm(outdoors$ec_county ~ outdoors$segregation))
+
+# ggsave("place_density_vs_employment_density.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```

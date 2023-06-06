@@ -1,0 +1,125 @@
+---
+title: "Summary Stat Tables"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged.csv")
+cuebiq_data <- read.csv("Data/working/cuebiq_zip.csv")
+```
+
+# Summary table 1 - social capital data
+```{r}
+table <- stargazer(data[c(
+  "ec_county",
+  "bias_grp_mem_county",
+  "exposure_grp_mem_county"
+  )],
+  covariate.labels=c('Economic Connectedness','Friending Bias', "Exposure"),
+  title="Summary Statistics for Economic Connectedness, Friending Bias and High-SES Exposure",
+  median = TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table1.txt")
+```
+
+# Summary table 2 - cuebiq (experienced segregation) data
+```{r results = "asis"}
+table <- stargazer(cuebiq_data[c(
+  "nusers",
+  "nstays",
+  "segregation"
+  )],
+  covariate.labels=c('Num Users','Num Stays', "Segregation"),
+  title="Summary Statistics for Experienced Economic Segregation for POIs in 11 cities",
+  median=TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table2.txt")
+```
+
+# Summary table 3 - demographics
+```{r}
+table <- stargazer(data[c(
+  "pop2018", #Population
+  "popdensity2010", #Population density
+  "repshare2016", # Republican Share
+  "pct_gte_college_2016_20", #Education rates
+  "oi_diversity", #Racial Diversity
+  "Median_Household_Income_2020", #Median household income
+  "Unemployment_rate_2021" # Unemployment rate
+  )], 
+  
+  covariate.labels=c(
+    'Population',
+    'Population Density (ppl/mi^2)',
+    "Republican Share",
+    "College Attendance Rates",
+    "Racial Diversity",
+    "Household Income (1000s of USD)",
+    "Unemployment Rate"
+  ),
+  title="Summary Statistics for County Demographic Data",
+  median=TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table3.txt")
+```
+
+# Summary table 4 - employment density
+```{r results = "asis"}
+table <- stargazer(data[c(
+  "D1C8_RET",
+  "D1C8_OFF",
+  "D1C8_IND",
+  "D1C8_SVC",
+  "D1C8_ENT",
+  "D1C8_ED",
+  "D1C8_HLTH",
+  "D1C8_PUB"
+  )],
+  covariate.labels=c(
+    'Density of Retail Jobs',
+    'Density of Office Jobs',
+    'Density of Industrial Jobs',
+    'Density of Service Jobs',
+    'Density of Entertainment Jobs',
+    'Density of Education Jobs',
+    'Density of Healthcare Jobs',
+    'Density of Public Admin Jobs'
+  ),
+  title="Summary Statistics for County Employment Density",
+  median=TRUE
+  )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table4.txt")
+```
+
+# Summary table 4 - urban design measures
+```{r results = "asis"}
+table <- stargazer(data[c(
+  "D3B",
+  "D2A_EPHHM",
+  "D2B_E8MIXA",
+  "NatWalkInd"
+  )],
+  covariate.labels=c(
+    'Road Network Density',
+    'Employment and Household Entropy',
+    'Employment Entropy',
+    "Walkability Index"
+  ),
+  title="Summary Statistics for County Level Urban Design Measures",
+  median=TRUE
+  )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table5.txt")
+```
+
+

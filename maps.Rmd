@@ -1,0 +1,113 @@
+---
+title: "Map"
+output: pdf_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+library(usmap)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged.csv")
+```
+
+# EC Nationally
+```{r}
+df <- data.frame(
+    fips = data$county_code,
+    values = data$ec_county
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+
+plot_usmap(data = df, color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "Economic Connectedness (Percentile)") + theme(legend.position = "right")
+# ggsave("connectedness_map.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+
+
+
+```{r}
+df <- data.frame(
+  zip = data$
+)
+```
+
+
+
+
+```{r}
+df <- data.frame(
+    fips = data$county_code,
+    values = 1 - data$bias_grp_mem_county
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+plot_usmap(regions="counties", include=c(25017, 25025, 25021, 25023, 25027, 25009, 25005), data = df, color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "(Inverse) Friending Bias (Percentile)") + theme(legend.position = "right")
+# ggsave("bias_map_boston.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+
+# Bias Nationally
+```{r}
+df <- data.frame(
+    fips = data$county_code,
+    values = data$bias_grp_mem_county
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+plot_usmap(data = df, color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "Friending Bias (Percentile)") + theme(legend.position = "right")
+ggsave("bias_map.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+# Exposure Nationally
+```{r}
+df <- data.frame(
+    fips = data$county_code,
+    values = data$exposure_grp_mem_county
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+plot_usmap(data = df, color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "High-SES Exposure (Percentile)") + theme(legend.position = "right")
+# ggsave("exposure_map.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+# Urban Counties
+```{r}
+df <- data.frame(
+    fips = data$county_code,
+    values = data$urban
+)
+
+plot_usmap(data = df, color = "NA") + 
+  scale_fill_binned(name="Urban Indicator") + theme(legend.position = "right")
+ggsave("urban_counties.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+# Density of entertainment jobs in Urban Counties
+```{r}
+data <- subset(data, urban == 1)
+
+model <- lm(data$D1C8_ENT ~ data$popdensity2010)
+
+df <- data.frame(
+    fips = data$county_code,
+    values = rstandard(model)
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+plot_usmap(data = df, color = "NA") + 
+  scale_fill_binned(name="Density of Entertainment Jobs") + theme(legend.position = "right")
+ggsave("entertainment_jobs.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+

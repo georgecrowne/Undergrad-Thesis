@@ -1,0 +1,138 @@
+---
+title: "Cuebiq County Comparisons"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(ggrepel)
+library(usmap)
+library(cowplot)
+```
+
+```{r}
+rm(list = ls())
+cuebiq_data = read.csv("Data/working/cuebiq_zip.csv")
+data = read.csv("Data/working/data_merged.csv")
+cbsa = read.csv("Data/raw/cbsa2fipsxw.csv")
+```
+
+# Aggregate over counties
+```{r}
+cols = cuebiq_data %>% select(
+  county,
+  state...14,
+  nstays,
+  segregation
+)
+
+counties <- cols %>% 
+  group_by(county, state...14) %>% 
+  summarize_at(vars(segregation),funs(weighted.mean(., w=nstays, na.rm=TRUE)))
+
+counties <- rename(counties, "name" = "county")
+counties <- rename(counties, "state_fips" = "state...14")
+
+counties <- counties %>%
+  left_join(data, by = c("name", "state_fips"))
+
+counties <- subset(counties, !is.na(counties$ec_county))
+```
+
+```{r}
+ggplot(counties,aes(x=segregation,y=ec_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Experienced Segregation") +
+  ylab("Economic Connectedness")
+
+# ggsave("cuebiq_county_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+ggplot(counties,aes(x=segregation,y=bias_grp_mem_county)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Experienced Segregation") +
+  ylab("Friending Bias")
+
+# ggsave("cuebiq_county_fb.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create summary table 9
+```{r}
+lm1 <- lm(counties$ec_county~counties$segregation)
+lm2 <- lm(counties$bias_grp_mem_county~counties$segregation)
+lm3 <- lm(counties$exposure_grp_mem_county~counties$segregation)
+
+mean_ec <- round(mean(counties$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(counties$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(counties$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(counties$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(counties$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(counties$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3,
+          title="Social Capital vs Experienced Income Segregation",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Experienced Segregation"
+          ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="p"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table9.txt")
+```
+
+# Create summary table 10
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(Median_Household_Income_2020) +
+          oi_diversity +
+          segregation,
+          data = counties)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(counties$ec_county)
+lm2 <- estimate_horserace_regression(counties$bias_grp_mem_county)
+lm3 <- estimate_horserace_regression(counties$exposure_grp_mem_county)
+
+mean_ec <- round(mean(counties$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(counties$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(counties$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(counties$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(counties$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(counties$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3,
+          title="Social Capital vs Experienced Income Segregation",
+          dep.var.labels=c("Economic Connectedness", "Friending Bias", "High-SES Exposure"),
+          covariate.labels=c(
+            "Median Household Income",
+            "Racial Diversity",
+            "Experienced Segregation"
+          ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="p"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table10.txt")
+```
+
+
+
+
+
+

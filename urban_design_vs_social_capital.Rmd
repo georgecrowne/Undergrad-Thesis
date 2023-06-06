@@ -1,0 +1,394 @@
+---
+title: "Urban Design vs Social Capital"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+library(datawizard)
+
+rm(list = ls())
+setwd("~/Desktop/Thesis")
+data <- read.csv("Data/working/data_merged.csv")
+cuebiq <- read.csv("Data/working/cuebiq_zip.csv")
+data = subset(data, urban == 1)
+```
+
+# Create Figure
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(log(Median_Household_Income_2020)) + 
+          scale(log(popdensity2010)) +
+          scale(D3B) +
+          scale(D2B_E8MIXA) +
+          scale(NatWalkInd),
+          data = data)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(data$bias_grp_mem_county), estimate_horserace_regression(data$ec_county),
+           estimate_horserace_regression(data$exposure_grp_mem_county),
+
+           coefs = c("Household Income" = "scale(log(Median_Household_Income_2020))",
+                     "Population Density" = "scale(log(popdensity2010))",
+                     "Street Intersection Density" = "scale(D3B)",
+                     "Employment Entropy" = "scale(D2B_E8MIXA)",
+                     "Walkability Index" = "scale(NatWalkInd)"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"))
+
+# ggsave("features_density_horse_race.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create Summary Table
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(Median_Household_Income_2020) + 
+          log(popdensity2010) +
+          D3B +
+          D2B_E8MIXA +
+          NatWalkInd,
+          data = data)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(data$ec_county)
+lm2 <- estimate_horserace_regression(data$bias_grp_mem_county)
+lm3 <- estimate_horserace_regression(data$exposure_grp_mem_county)
+
+mean_ec <- round(mean(data$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3,
+          title="Urban Design vs Social Capital",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Household Income",
+            "Population Density",
+            "Street Intersection Density",
+            "Employment Entropy",
+            "Walkability Index"
+            ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="p"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table8.txt")
+```
+
+# Get Experienced Segregation and number of visits for each county
+```{r}
+cols = cuebiq %>% select(
+  county,
+  state...14,
+  nstays,
+  segregation
+)
+
+counties <- cols %>% 
+  group_by(county, state...14) %>% 
+  summarize(across(c(segregation),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+counties_nstays <- cols %>% 
+  group_by(county, state...14) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+
+counties <- rename(counties, "name" = "county")
+counties <- rename(counties, "state_fips" = "state...14")
+counties_nstays <- rename(counties_nstays, "name" = "county")
+counties_nstays <- rename(counties_nstays, "state_fips" = "state...14")
+
+counties <- counties %>%
+  left_join(data, by = c("name", "state_fips"))
+
+counties_nstays <- counties_nstays %>%
+  left_join(data, by = c("name", "state_fips"))
+
+counties <- subset(counties, !is.na(counties$ec_county))
+counties_nstays <- subset(counties_nstays, !is.na(counties_nstays$ec_county))
+
+head(counties)
+
+```
+
+# Don't worry about this
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(scale(outcome) ~
+          scale(log(Median_Household_Income_2020)) + 
+          scale(log(popdensity2010)) +
+          scale(D3B) +
+          scale(D2B_E8MIXA) +
+          scale(NatWalkInd),
+          data = counties)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(counties$bias_grp_mem_county), estimate_horserace_regression(counties$ec_county),
+           estimate_horserace_regression(counties$exposure_grp_mem_county),
+
+           coefs = c("Household Income" = "scale(log(Median_Household_Income_2020))",
+                     "Population Density" = "scale(log(popdensity2010))",
+                     "Street Intersection Density" = "scale(D3B)",
+                     "Employment Entropy" = "scale(D2B_E8MIXA)",
+                     "Walkability Index" = "scale(NatWalkInd)"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"))
+```
+
+# Plot segregation against employment entropy
+```{r}
+ggplot(counties,aes(x=D2B_E8MIXA,y=bias)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Employment Entropy") +
+  ylab("Experienced Segregation")
+
+summary(lm(counties$bias ~ counties$D2B_E8MIXA))
+```
+
+# Plot segregation against intersection density
+```{r}
+ggplot(counties,aes(x=D3B,y=segregation)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") +
+  ylab("Experienced Segregation")
+
+summary(lm(counties$segregation ~ counties$D3B))
+```
+
+# Plot segregation against intersection density
+```{r}
+ggplot(counties,aes(x=D3B,y=bias)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") +
+  ylab("Experienced Segregation")
+
+summary(lm(counties$bias ~ counties$D3B))
+```
+
+# Plot segregation against entertainment place density
+```{r}
+ggplot(counties,aes(x=log(D1C8_ENT),y=segregation)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Entertainment Job Density") +
+  ylab("Experienced Segregation")
+
+
+summary(lm(counties$segregation ~ counties$D1C8_ENT + counties$pop_2019))
+summary(lm(scale(segregation)~scale(D1C8_ENT), data=counties))
+summary(lm(scale(segregation)~scale(log(D1C8_ENT))+I(scale(log(D1C8_ENT))^2), data=counties))
+
+```
+
+# Correlate intersection density with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(counties$segregation ~ scale(counties$D3B))
+lm2 <- lm(counties$segregation ~ scale(counties$D3B) + scale(counties$Median_Household_Income_2020))
+lm3 <- lm(counties$segregation ~ scale(counties$D3B) + scale(counties$pop_density))
+lm4 <- lm(counties$segregation ~ scale(counties$D3B) + scale(counties$Median_Household_Income_2020) + scale(counties$pop_density))
+lm5 <- lm(counties$segregation ~
+            scale(counties$D3B) + 
+            scale(counties$Median_Household_Income_2020) + 
+            scale(counties$pop_density) + 
+            scale(counties$repshare2016) + 
+            scale(counties$pct_gte_college_2016_20) + 
+            scale(counties$oi_diversity) + 
+            scale(counties$Unemployment_rate_2021))
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5)
+```
+
+# Correlate Employment Entropy with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(scale(counties$segregation) ~ scale(counties$D2B_E8MIXA))
+lm2 <- lm(scale(counties$segregation) ~ scale(counties$D2B_E8MIXA) + scale(counties$Median_Household_Income_2020))
+lm3 <- lm(scale(counties$segregation) ~ scale(counties$D2B_E8MIXA) + scale(counties$pop_density))
+lm4 <- lm(scale(counties$segregation) ~ scale(counties$D2B_E8MIXA) + scale(counties$Median_Household_Income_2020) + scale(counties$pop_density))
+lm5 <- lm(scale(counties$segregation) ~
+            scale(counties$D2B_E8MIXA) + 
+            scale(counties$Median_Household_Income_2020) + 
+            scale(counties$pop_density) + 
+            scale(counties$repshare2016) + 
+            scale(counties$pct_gte_college_2016_20) + 
+            scale(counties$oi_diversity) + 
+            scale(counties$Unemployment_rate_2021))
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5)
+```
+
+# Correlate Entertainment Job Density with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(scale(counties$segregation) ~ scale(counties$D1C8_ENT))
+lm2 <- lm(scale(counties$segregation) ~ scale(counties$D1C8_ENT) + scale(counties$Median_Household_Income_2020))
+lm3 <- lm(scale(counties$segregation) ~ scale(counties$D1C8_ENT) + scale(counties$pop_density))
+lm4 <- lm(scale(counties$segregation) ~ scale(counties$D1C8_ENT) + scale(counties$Median_Household_Income_2020) + scale(counties$pop_density))
+lm5 <- lm(scale(counties$segregation) ~
+            scale(counties$D1C8_ENT) + 
+            scale(counties$Median_Household_Income_2020) + 
+            scale(counties$pop_density) + 
+            scale(counties$repshare2016) + 
+            scale(counties$pct_gte_college_2016_20) + 
+            scale(counties$oi_diversity) + 
+            scale(counties$Unemployment_rate_2021))
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5)
+
+```
+
+# Does urban design create more visits to places?
+
+# Correlate intersection density with number of visits
+```{r}
+ggplot(counties_nstays,aes(x=D3B,y=nstays)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") +
+  ylab("Num Visits")
+
+summary(lm(counties_nstays$nstays ~ counties_nstays$D3A))
+```
+
+# Correlate employment entropy with number of visits
+```{r}
+ggplot(counties_nstays,aes(x=D2B_E8MIXA,y=nstays)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Employment Entropy") +
+  ylab("Num Visits")
+
+summary(lm(counties_nstays$nstays ~ counties_nstays$D2B_E8MIXA))
+```
+
+# Correlate entertainment place density with number of visits
+```{r}
+ggplot(counties_nstays,aes(x=log(D1C8_ENT),y=nstays)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Entertainment place density") +
+  ylab("Num Visits")
+
+summary(lm(counties_nstays$nstays ~ counties_nstays$D1C8_ENT))
+```
+
+# Plot Cuebiq county level data
+```{r}
+ggplot(counties, aes(x=segregation)) + 
+  geom_histogram() +
+  geom_density(alpha=.2, fill="#FF6666")
+```
+
+# Get segregation as percentile of national distribution
+```{r}
+df <- data.frame(counties)
+df$segregation_percentile = df$segregation
+
+df <- mutate(df, segregation_percentile = ntile(df$segregation,100))
+```
+
+# Get urban design measures as percentile of national distribution
+```{r}
+df$intersection_percentile = df$D3B
+df$employment_entropy_percentile = df$D2B_E8MIXA
+df$entertainment_percentile = df$D1C8_ENT
+
+df <- mutate(df, intersection_percentile = ntile(df$D3B,100))
+df <- mutate(df, employment_entropy_percentile = ntile(df$D2B_E8MIXA,100))
+df <- mutate(df, entertainment_percentile = ntile(df$D1C8_ENT,100))
+```
+
+# Plot entertainment density against segregation percentile
+```{r}
+ggplot(df,aes(x=entertainment_percentile,y=segregation_percentile)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Entertainment place density") +
+  ylab("Experienced Income segregation")
+
+summary(lm(df$segregation_percentile ~ df$entertainment_percentile))
+```
+
+# Plot intersection density against segregation percentile
+```{r}
+ggplot(df,aes(x=intersection_percentile,y=segregation_percentile)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") +
+  ylab("Segregation Percentile")
+
+summary(lm(df$segregation_percentile ~ df$intersection_percentile))
+```
+
+# Plot intersection density against segregation percentile
+```{r}
+ggplot(df,aes(x=employment_entropy_percentile,y=segregation_percentile)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Employment Entropy") +
+  ylab("Segregation Percentile")
+
+summary(lm(df$segregation_percentile ~ df$employment_entropy_percentile))
+```
+
+# Winsorize values
+```{r}
+df$winsorize_segregation = df$segregation
+winsorize(df$winsorize_segregation, probs = c(0.05, 0.95))
+
+df$winsorize_intersection = df$D3B
+winsorize(df$winsorize_intersection, probs = c(0.05, 0.95))
+df$winsorize_employment_entropy = df$D2B_E8MIXA
+winsorize(df$winsorize_employment_entropy, probs = c(0.05, 0.95))
+df$winsorize_entertainment = df$D1C8_ENT
+winsorize(df$winsorize_entertainment, probs = c(0.05, 0.95))
+
+```
+
+# Correlate Winsorized segregation with winsorized intersection density
+```{r}
+ggplot(df,aes(x=winsorize_intersection,y=winsorize_segregation)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Entertainment place density") +
+  ylab("Experienced Income segregation")
+
+summary(lm(df$winsorize_segregation ~ log(df$winsorize_intersection)))
+```
+
+# See if urban form associates with other social capital outcomes
+# Volunteering Rates
+```{r}
+summary(lm(volunteering_rate_county ~ D3B + D1C8_ENT + D2B_E8MIXA, data = data))
+```
+
+# Civic Organizations
+```{r}
+summary(lm(civic_organizations_county ~ D3B + D1C8_ENT + D2B_E8MIXA + pop_density , data = data))
+```
+

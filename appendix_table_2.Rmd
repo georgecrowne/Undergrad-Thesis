@@ -1,0 +1,73 @@
+---
+title: "Appendix Table 2"
+author: "George Crowne"
+output: 
+  pdf_document:
+    keep_tex: true
+hedaer-includes:
+    - \usepackage{dcolumn}
+classoption: landscape 
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged.csv")
+
+data <- subset(data, urban == 1)
+
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(log(Median_Household_Income_2020)) +
+          scale(D1C8_RET) +
+          scale(D1C8_OFF) +
+          scale(D1C8_IND) +
+          scale(D1C8_SVC) +
+          scale(D1C8_ENT) +
+          scale(D1C8_ED) +
+          scale(D1C8_HLTH) + 
+          scale(D1C8_PUB),
+          data = data)
+  return(model)
+}
+
+mean_ec <- round(mean(data$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+lm1 = estimate_horserace_regression(data$ec_county)
+lm2 = estimate_horserace_regression(data$bias_grp_mem_county)
+lm3 = estimate_horserace_regression(data$exposure_grp_mem_county)
+
+table <- stargazer(lm1, lm2, lm3, 
+                   title="Results: Social Capital Outcomes vs Employment Density",
+                   dep.var.labels = c("EC", "FB", "Exp"),
+                   covariate.labels=c(
+                      'Household Income',
+                      'Density of Retail Jobs',
+                      'Density of Office Jobs',
+                      "Density of Industry Jobs",
+                      "Density of Service Jobs",
+                      "Density of Entertainment Jobs",
+                      "Density of Education Jobs",
+                      "Density of Healthcare Jobs",
+                      "Density of Public Admin Jobs"
+                  ),
+                  add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp))
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/appendix_table2.txt")
+```
+
+

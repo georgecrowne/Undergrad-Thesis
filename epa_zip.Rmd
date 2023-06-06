@@ -1,0 +1,117 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(cowplot)
+```
+
+```{r}
+rm(list = ls())
+data = read.csv("Data/raw/social_capital_zip.csv")
+epa_data = read.csv("Data/raw/walkability_index.csv")
+tract_zip = read.csv("Data/raw/zip_to_tract.csv")
+copy <- epa_data
+epa_data <- copy
+```
+
+
+LIMIT DATA FOR SPEED - DELETE WHEN READY
+```{r}
+epa_data <- copy
+epa_data <- head(epa_data, 50)
+```
+
+```{r}
+# EPA Data
+epa_data[epa_data$TRACTCE < 1000,]$TRACTCE <- gsub(" ", "", paste0("0", epa_data[epa_data$TRACTCE < 1000,]$TRACTCE))
+epa_data[as.numeric(epa_data$TRACTCE) < 10000,]$TRACTCE <- gsub(" ", "", paste0("0", epa_data[as.numeric(epa_data$TRACTCE) < 10000,]$TRACTCE))
+epa_data[as.numeric(epa_data$TRACTCE) < 100000,]$TRACTCE <- gsub(" ", "", paste0("0", epa_data[as.numeric(epa_data$TRACTCE) < 100000,]$TRACTCE))
+
+
+epa_data$STATEFP = as.character(epa_data$STATEFP)
+epa_data$COUNTYFP = as.character(epa_data$COUNTYFP)
+epa_data$TRACTCE = as.character(epa_data$TRACTCE)
+epa_data$tract <- gsub(" ", "", paste(epa_data$STATEFP, epa_data$COUNTYFP, epa_data$TRACTCE))
+
+epa_data$tract <- as.numeric(epa_data$tract)
+
+epa_data <- epa_data %>%
+  left_join(tract_zip, by="tract")
+
+cols = epa_data %>% select(
+  zip,
+  tot_ratio,
+  TotPop,
+  Ac_Total,
+  D1B,
+  D1C8_RET,
+  D1C8_OFF,
+  D1C8_IND,
+  D1C8_SVC,
+  D1C8_ENT,
+  D1C8_ED,
+  D1C8_HLTH,
+  D1C8_PUB,
+  D2R_WRKEMP,
+  D1D,
+  D3A,
+  D3B,
+  D3APO,
+  D3AAO,
+  D3AMM,
+  D3B,
+  D3BPO4,
+  
+  P_WrkAge, # Percent working age
+  Pct_AO0, # Percent owning 0 cars
+  Pct_AO1,
+  Pct_AO2p,
+  D2B_E8MIX, # Employment entropy
+  D2B_E8MIXA, # Employment entropy (different denominator - don't understand)
+  D2A_EPHHM, # Household and employment entropy
+  D2C_TRPMX1, # Different types of diversity - need to figure out what they mean
+  D2C_TRPMX2,
+  D2R_JOBPOP,
+  NatWalkInd,
+  D2A_WRKEMP
+)
+
+means <- cols %>%
+  group_by(zip) %>%
+  ## Ac_Total is total acres
+  summarize_at(vars(D1B:D3BPO4),funs(weighted.mean(., w=tot_ratio)))
+
+
+data <- data %>%
+  left_join(means, by = "zip")
+
+# Population weighted variables
+# means <- cols %>%
+#   group_by(STATEFP, COUNTYFP) %>%
+#   ## Ac_Total is total acres
+#   summarize_at(vars(P_WrkAge:D2A_WRKEMP),funs(weighted.mean(., w=TotPop)))
+# means = rename(means, "state_fips" = "STATEFP")
+# means = rename(means, "county" = "COUNTYFP")
+# ec_data_merged <- ec_data_merged %>%
+#   left_join(means, by = c("county", "state_fips"))
+```
+
+```{r}
+count(means[!is.na(means$zip),])
+data[1000,"zip"]
+data[data$zip == 24282,]
+
+means[means$zip == 24282,]
+```
+

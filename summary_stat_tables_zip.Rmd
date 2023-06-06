@@ -1,0 +1,143 @@
+---
+title: "ZIP Code - Summary Stat Tables"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged_zip.csv")
+cuebiq_data <- read.csv("Data/working/cuebiq_zip.csv")
+```
+
+# Summary table 1 - Demographics
+```{r}
+table <- stargazer(data[c(
+  "pop2018", #Population
+  "population_density", #Population density
+  "college_rates", #Education rates
+  "diversity", #Racial Diversity
+  "median_household_income", #Median household income
+  "unemployment_rate" # Unemployment rate
+  )], 
+  
+  covariate.labels=c(
+    'Population',
+    'Population Density (ppl/mi^2)',
+    "College Attendance Rates",
+    "Racial Diversity",
+    "Household Income (1000s of USD)",
+    "Unemployment Rate"
+  ),
+  title="Summary Statistics for ZIP Code Demographic Data",
+  median=TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/zip_demographics_summary.txt")
+```
+
+# Summary table 2 - urban design
+```{r results = "asis"}
+table <- stargazer(data[c(
+  "D3B",
+  "D2B_E8MIXA",
+  "D1C8_ENT"
+  )],
+  covariate.labels=c(
+    'Street Intersection Density',
+    'Employment Entropy',
+    'Entertainment Place Density'
+  ),
+  title="Summary Statistics for ZIP Code Urban Design Data",
+  median=TRUE
+  )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/zip_urban_design_summary.txt")
+```
+
+```{r}
+mean(data$D1C8_ENT, na.rm=TRUE)
+max(data$D3B, na.rm=TRUE)
+test <- subset(data, zip == 10014)
+mean(test$D1C8_ENT)
+head(data)
+max(data$D1C8_ENT, na.rm=TRUE)
+head(test)
+mean(data$D2B_E8MIXA, na.rm=TRUE)
+mean(test$D2B_E8MIXA)
+test$D2B_E8MIXA
+max(data$D2B_E8MIXA, na.rm=TRUE)
+test2 <- subset(data, D2B_E8MIXA > 0.90)
+head(test)
+```
+
+
+# Summary table 3 - cuebiq (experienced segregation) data
+```{r results = "asis"}
+cuebiq_data$bias <- ((cuebiq_data$p1a + cuebiq_data$p2a) - (cuebiq_data$p3a + cuebiq_data$p4a))^2
+
+cols = cuebiq_data %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+
+zips <- data.frame(zips)
+
+
+
+table <- stargazer(zips[c(
+  "segregation"
+   )],
+   covariate.labels=c("Experienced Income Segregation"),
+   title="Summary Statistics for Zip Code Experienced Economic Segregation in 11 cities",
+   median=TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/zip_cuebiq_summary.txt")
+```
+
+# Summary table 4 - Friending Bias and Social Capital
+```{r}
+table <- stargazer(data[c(
+  "bias_grp_mem_zip",
+  "ec_zip",
+  "exposure_grp_mem_zip"
+  )],
+  covariate.labels=c('Friending Bias', 'Economic Connectedness', "Exposure"),
+  title="Summary Statistics for ZIP Code Friending Bias",
+  median = TRUE)
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/zip_social_capital_summary.txt")
+```
+
+

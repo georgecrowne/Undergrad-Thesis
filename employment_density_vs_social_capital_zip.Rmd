@@ -1,0 +1,117 @@
+---
+---
+title: "Employment Density vs Social Capital ZIP Code Level"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged_zip.csv")
+data <- subset(data, population_density > 200)
+```
+
+# Create Figure
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(log(median_household_income)) +
+          scale(log(population_density)) +
+          scale(D1C8_RET) +
+          scale(D1C8_OFF) +
+          scale(D1C8_IND) +
+          scale(D1C8_SVC) +
+          scale(D1C8_ENT) +
+          scale(D1C8_ED) +
+          scale(D1C8_HLTH) + 
+          scale(D1C8_PUB),
+          data = data)
+  return(model)
+}
+plot_summs(estimate_horserace_regression(data$bias_grp_mem_zip), estimate_horserace_regression(data$ec_zip),
+           estimate_horserace_regression(data$exposure_grp_mem_zip),
+
+           coefs = c(
+                     "Household Income" = "scale(log(median_household_income))",
+                     "Population Density" = "scale(log(population_density))",
+                     "Density of Retail Jobs" = "scale(D1C8_RET)",
+                     "Density of Office Jobs" = "scale(D1C8_OFF)",
+                     "Density of Industry Jobs" = "scale(D1C8_IND)",
+                     "Density of Service Jobs" = "scale(D1C8_SVC)",
+                     "Density of Entertainment Jobs" = "scale(D1C8_ENT)",
+                     "Density of Education Jobs" = "scale(D1C8_ED)",
+                     "Density of Health Jobs" = "scale(D1C8_HLTH)",
+                     "Density of Public Administration Jobs" = "scale(D1C8_PUB)"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"))
+# ggsave("employment_density_horse_race.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create Regression Table
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(median_household_income) +
+          log(population_density) +
+          D1C8_RET +
+          D1C8_OFF +
+          D1C8_IND +
+          D1C8_SVC +
+          D1C8_ENT +
+          D1C8_ED +
+          D1C8_HLTH + 
+          D1C8_PUB,
+          data = data)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(data$ec_zip)
+lm2 <- estimate_horserace_regression(data$bias_grp_mem_zip)
+lm3 <- estimate_horserace_regression(data$exposure_grp_mem_zip)
+
+mean_ec <- round(mean(data$ec_zip, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_zip, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_zip, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, 
+          title="Social Capital vs Employment Density",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Household Income",
+            "Population Density",
+            "Density of Retail Jobs",
+            "Density of Office Jobs",
+            "Density of Industry Jobs",
+            "Density of Service Jobs",
+            "Density of Entertainment Jobs",
+            "Density of Education Jobs",
+            "Density of Health Jobs",
+            "Density of Public Administration Jobs"
+            ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          column.sep.width ="0pt",
+          table.placement="p"
+          )
+
+# write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table7.txt")
+```
+
+```{r}
+summary(lm(bias_grp_mem_zip ~ D1C8_ENT, data=data))
+```

@@ -1,0 +1,57 @@
+---
+title: "Mapping zip codes"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(rgdal) 
+library(maptools) 
+library(sf)
+options(stringsAsFactors = TRUE)
+rm(list = ls())
+setwd("~/Desktop/Thesis")
+shapefile <- st_read("Data/raw/tl_2018_us_zcta510.shp")
+data <- read.csv("Data/working/data_merged_zip.csv")
+max(data$diversity, na.rm=TRUE)
+```
+
+```{r}
+states <- map_data("state")
+
+ma <- subset(data, Geo_STATE == 25)
+
+ma$zip <- toString(ma$zip)
+ma <- ma %>%
+  mutate(zip = str_pad(zip, 5, side = "left", "0"))
+head(ma)
+```
+
+
+```{r}
+
+uspoly <- subset(shapefile, ZCTA5CE10 %in% ma$zip)
+uspoly$group <- substr(uspoly$ZCTA5CE10, 1,3)
+
+
+
+uspoly$ZCTA5CE10 <- droplevels(uspoly$ZCTA5CE10)
+uspoly.union <- unionSpatialPolygons(uspoly, uspoly$group)
+uspolyfort_A <- fortify(uspoly.union)
+
+usmap_A <- uspolyfort_A %>%
+  select(long, lat, order, group) %>%
+  mutate(Territory_A = "In") %>%
+  mutate(group = as.numeric(group)) %>%
+  bind_rows(states %>%
+              select(long, lat, order, group) %>%
+              mutate(Territory_A = "Out") %>%
+              mutate(group = group + max(as.numeric(uspolyfort_A$group))))
+
+head(usmap_A)
+```
+
+
+

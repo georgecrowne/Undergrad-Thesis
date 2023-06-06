@@ -1,0 +1,103 @@
+---
+title: "Demographics vs Social Capital"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged.csv")
+data = subset(data, urban == 1)
+```
+
+# Create figure
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(log(pop2018)) +
+          scale(log(popdensity2010)) +
+          scale(repshare2016) +
+          scale(pct_gte_college_2016_20) +
+          scale(oi_diversity) +
+          scale(Median_Household_Income_2020) +
+          scale(Unemployment_rate_2021),
+          data = data)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(data$bias_grp_mem_county), estimate_horserace_regression(data$ec_county),
+           estimate_horserace_regression(data$exposure_grp_mem_county),
+           
+           coefs = c("Population" = "scale(log(pop2018))",
+                     "Population Density" = "scale(log(popdensity2010))",
+                     "Republican Share" = "scale(repshare2016)",
+                     "% College or above" = "scale(pct_gte_college_2016_20)",
+                     "Racial Diversity" = "scale(oi_diversity)",
+                     "Median Household Income" = "scale(Median_Household_Income_2020)",
+                     "Unemployment Rate" = "scale(Unemployment_rate_2021)"
+                     ),
+           
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"),
+           legend.title = "County Level Model")
+
+ggsave("demographic_horse_race_graph.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create summary table
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(pop2018) +
+          log(popdensity2010) +
+          repshare2016 +
+          pct_gte_college_2016_20 +
+          oi_diversity +
+          Median_Household_Income_2020 +
+          Unemployment_rate_2021,
+          data = data)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(data$ec_county)
+lm2 <- estimate_horserace_regression(data$bias_grp_mem_county)
+lm3 <- estimate_horserace_regression(data$exposure_grp_mem_county)
+
+mean_ec <- round(mean(data$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, 
+          title="Demographics vs Social Capital Outcomes",
+          dep.var.labels=c("EC", "FB", "Exp"),
+          covariate.labels=c(
+            "Log Population",
+            "Log Population Density",
+            "Republican Share",
+            "\\% College or above",
+            "Racial Diversity",
+            "Median Household Income",
+            "Unemployment Rate"
+            ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="H"
+          )
+
+# write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table6.txt")
+```
+
+

@@ -1,0 +1,328 @@
+---
+title: "Demographics vs Social Capital"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+library(datawizard)
+library(plm)
+pacman::p_load(tidyverse, estimatr, ggplot2, dplyr, jtools, ggstance, broom.mixed, fabricatr) # You should install these packages.
+
+rm(list = ls())
+setwd("~/Desktop/Thesis")
+data <- read.csv("Data/working/data_merged_zip.csv")
+cuebiq <- read.csv("Data/working/cuebiq_zip.csv")
+```
+```{r}
+cuebiq$bias <- ((cuebiq$p1a + cuebiq$p2a) - (cuebiq$p3a + cuebiq$p4a))^2
+
+cols = cuebiq %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+```
+# Interaction of demographics and friending bias and EES
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          pop2018 +
+          population_density +
+          median_household_income +
+          diversity +
+          unemployment_rate,
+          data = zips)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(zips$segregation), estimate_horserace_regression(zips$bias_grp_mem_zip),
+
+           coefs = c(
+                     "Population" = "pop2018",
+                     "Population Density" = "population_density",
+                     "Household Income" = "median_household_income",
+                     "Racial Diversity" = "diversity",
+                     "Unemployment Rates" = "unemployment_rate"
+                     ),
+
+           robust = list("HC0","HC0"),
+           model.names =c("Experienced Economic Segregation", "Friending Bias"))
+
+
+ggsave("demographics_vs_segregation_friending_bias.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          pop2018 +
+          population_density +
+          median_household_income +
+          diversity +
+          unemployment_rate,
+          data = zips)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(zips$segregation)
+lm2 <- estimate_horserace_regression(zips$bias_grp_mem_zip)
+
+mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2,
+          title="Demographics vs Experienced Economic Segregation and Friending Bias",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Population",
+            "Population Density",
+            "Median Household Income",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_bias, mean_seg), c("Std. Dev", sd_bias, sd_seg)),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/demographics_vs_segregation_friending_bias.txt")
+```
+
+# INTERACTION BETWEEN DEMOGRAPHICS AND URBAN FORM
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          pop2018 +
+          population_density +
+          median_household_income +
+          diversity +
+          unemployment_rate,
+          data = zips)
+  return(model)
+}
+plot_summs(estimate_horserace_regression(zips$D3B), estimate_horserace_regression(zips$D1C8_ENT), estimate_horserace_regression(zips$D2B_E8MIXA),
+
+           coefs = c(
+                     "Population" = "pop2018",
+                     "Population Density" = "population_density",
+                     "Household Income" = "median_household_income",
+                     "Racial Diversity" = "diversity",
+                     "Unemployment Rates" = "unemployment_rate"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Intersection Density", "Entertainment Place Density", "Employment Entropy"))
+
+
+ggsave("demographics_vs_urban_form.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          pop2018 +
+          population_density +
+          median_household_income +
+          diversity +
+          unemployment_rate,
+          data = zips)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(zips$D3B)
+lm2 <- estimate_horserace_regression(zips$D1C8_ENT)
+lm3 <- estimate_horserace_regression(zips$D2B_E8MIXA)
+
+
+table <- stargazer(lm1, lm2, lm3,
+          title="Demographics vs Experienced Economic Segregation and Friending Bias",
+          covariate.labels=c(
+            "Population",
+            "Population Density",
+            "Median Household Income",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/demographics_vs_urban_form.txt")
+```
+
+
+
+```{r}
+zips <- data.frame(zips)
+table <- stargazer(zips[c(
+  "D1C8_RET",
+  "D1C8_OFF",
+  "D1C8_IND",
+  "D1C8_SVC",
+  "D1C8_ENT",
+  "D1C8_ED",
+  "D1C8_HLTH",
+  "D1C8_PUB"
+  )],
+
+  covariate.labels=c(
+    'Density of Retail Jobs',
+    'Density of Office Jobs',
+    'Density of Industrial Jobs',
+    'Density of Service Jobs',
+    'Density of Entertainment Jobs',
+    'Density of Education Jobs',
+    'Density of Healthcare Jobs',
+    'Density of Public Admin Jobs'
+  ),
+  title="Summary Statistics for ZIP code Employment Density",
+  median=TRUE
+  )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/summary_place_type_density.txt")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Create figure
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(log(pop2018)) +
+          scale(log(population_density)) +
+          scale(college_rates) +
+          scale(diversity) +
+          scale(median_household_income) +
+          scale(unemployment_rate),
+          data = data)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(data$bias_grp_mem_zip), estimate_horserace_regression(data$ec_zip),
+           estimate_horserace_regression(data$exposure_grp_mem_zip),
+           
+           coefs = c("Population" = "scale(log(pop2018))",
+                     "Population Density" = "scale(log(population_density))",
+                     "% College or above" = "scale(college_rates)",
+                     "Racial Diversity" = "scale(diversity)",
+                     "Median Household Income" = "scale(median_household_income)",
+                     "Unemployment Rate" = "scale(unemployment_rate)"
+                     ),
+           
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"),
+           legend.title = "County Level Model",
+           plot.distributions = TRUE)
+
+ggsave("zip_demographic_horse_race_graph.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create summary table
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(pop2018) +
+          log(popdensity2010) +
+          repshare2016 +
+          pct_gte_college_2016_20 +
+          oi_diversity +
+          Median_Household_Income_2020 +
+          Unemployment_rate_2021,
+          data = data)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(data$ec_county)
+lm2 <- estimate_horserace_regression(data$bias_grp_mem_county)
+lm3 <- estimate_horserace_regression(data$exposure_grp_mem_county)
+
+mean_ec <- round(mean(data$ec_county, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_county, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_county, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_county, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_county, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_county, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, 
+          title="Demographics vs Social Capital Outcomes",
+          dep.var.labels=c("EC", "FB", "Exp"),
+          covariate.labels=c(
+            "Log Population",
+            "Log Population Density",
+            "Republican Share",
+            "\\% College or above",
+            "Racial Diversity",
+            "Median Household Income",
+            "Unemployment Rate"
+            ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="H"
+          )
+
+# write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table6.txt")
+```
+
+

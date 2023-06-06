@@ -1,0 +1,243 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(ggrepel)
+library(cowplot)
+library(lfe)
+```
+
+```{r}
+rm(list = ls())
+cuebiq_data = read.csv("Data/working/cuebiq_zip.csv")
+data = read.csv("Data/working/data_merged_zip.csv")
+cbsa = read.csv("Data/raw/cbsa2fipsxw.csv")
+```
+
+# Get aggregated experienced segregation for every zip
+```{r}
+cuebiq_data$bias <- ((cuebiq_data$p1a + cuebiq_data$p2a) - (cuebiq_data$p3a + cuebiq_data$p4a))^2
+
+cols = cuebiq_data %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+```
+# Map zips to cities for city fixed effects
+```{r}
+head(zips$CBSA.title)
+zips$CBSA.title[zips$CBSA.title == "Barnstable Town, MA"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$CBSA.title[zips$CBSA.title == "Manchester-Nashua, NH"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$CBSA.title[zips$CBSA.title == "Worcester, MA-CT"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$CBSA.title[zips$CBSA.title == "Providence-Warwick, RI-MA"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$CBSA.title[zips$CBSA.title == "Portland-South Portland, ME"] <- "Boston-Cambridge-Newton, MA-NH"
+
+# NYC
+zips$CBSA.title[zips$CBSA.title == "Bridgeport-Stamford-Norwalk, CT"] <- "New York-Newark-Jersey City, NY-NJ-PA"
+zips$CBSA.title[zips$CBSA.title == "Kingston, NY"] <- "New York-Newark-Jersey City, NY-NJ-PA"
+
+# PHILLY
+zips$CBSA.title[zips$CBSA.title == "Atlantic City-Hammonton, NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$CBSA.title[zips$CBSA.title == "Allentown-Bethlehem-Easton, PA-NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$CBSA.title[zips$CBSA.title == "Trenton, NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$CBSA.title[zips$CBSA.title == "Lancaster, PA"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+
+# DC
+zips$CBSA.title[zips$CBSA.title == "Baltimore-Columbia-Towson, MD"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$CBSA.title[zips$CBSA.title == "Dover, DE"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$CBSA.title[zips$CBSA.title == "Richmond, VA"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$CBSA.title[zips$CBSA.title == "Winchester, VA-WV"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+
+# CHICAGO
+zips$CBSA.title[zips$CBSA.title == "Michigan City-La Porte, IN"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$CBSA.title[zips$CBSA.title == "Racine, WI"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$CBSA.title[zips$CBSA.title == "Ottawa-Peru, IL" ] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$CBSA.title[zips$CBSA.title == "Pontiac, IL"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$CBSA.title[zips$CBSA.title == "Kankakee, IL"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+
+# DETROIT
+zips$CBSA.title[zips$CBSA.title == "Ann Arbor, MI"] <- "Detroit-Warren-Dearborn, MI"
+zips$CBSA.title[zips$CBSA.title == "Flint, MI"] <- "Detroit-Warren-Dearborn, MI"
+
+# DALLAS 
+zips$CBSA.title[zips$CBSA.title == "Athens, TX"] <- "Dallas-Fort Worth-Arlington, TX"
+zips$CBSA.title[zips$CBSA.title == "Mineral Wells, TX"] <- "Dallas-Fort Worth-Arlington, TX"
+
+# LOS ANGELES
+zips$CBSA.title[zips$CBSA.title == "Oxnard-Thousand Oaks-Ventura, CA"] <- "Los Angeles-Long Beach-Anaheim, CA"
+zips$CBSA.title[zips$CBSA.title == "Riverside-San Bernardino-Ontario, CA"] <- "Los Angeles-Long Beach-Anaheim, CA"
+zips$CBSA.title[zips$CBSA.title == "Bakersfield, CA" ] <- "Los Angeles-Long Beach-Anaheim, CA"
+
+# SAN FRANCISCO
+zips$CBSA.title[zips$CBSA.title == "San Jose-Sunnyvale-Santa Clara, CA"  ] <- "San Francisco-Oakland-Hayward, CA"
+
+# SEATTLE
+zips$CBSA.title[zips$CBSA.title == "Oak Harbor, WA"] <- "Seattle-Tacoma-Bellevue, WA"
+zips$CBSA.title[zips$CBSA.title =="Bremerton-Silverdale, WA"] <- "Seattle-Tacoma-Bellevue, WA"
+```
+
+
+```{r}
+# OLS is smaller than IV. Why? Measurement error in segregation. Think about other reasons
+# could show a binscatter of fitted values of segregation against bias
+```
+
+# Instrumenting only with intersection density:
+```{r}
+ols_stage_1_0 <- lm(segregation ~ D3B, data=zips)
+ols_stage_1_1 <- lm(segregation ~ D3B  + population_density + median_household_income, data=zips)
+ols_stage_1_2 <- lm(segregation ~ D3B  + 
+                     pop2018 +
+                     population_density +
+                     median_household_income +
+                     diversity + 
+                     unemployment_rate,
+                     data=zips)
+ols_stage_1_3 <- lm(segregation ~ D3B +  
+                     pop2018 +
+                     population_density +
+                     median_household_income +
+                     diversity + 
+                     unemployment_rate +
+                     as.factor(CBSA.title),
+                     data=zips)
+
+table <- stargazer(ols_stage_1_0, ols_stage_1_1, ols_stage_1_2, ols_stage_1_3, table.placement="H",
+                   add.lines = list(c("Simple Controls", "No", "Yes", "Yes", "Yes"), c("Full Controls", "No", "No", "Yes", "Yes"), c("City Fixed Effects", "No", "No", "No", "Yes")))
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/iv_stage_1_intersection_density.txt")
+```
+
+```{r}
+
+iv_model_0 <- felm(bias_grp_mem_zip ~ felm(segregation~D3B)$resid, data=zips)
+iv_model_1 <- felm(bias_grp_mem_zip ~ population_density + median_household_income | 0 | (segregation ~ D3B) , data=zips)
+iv_model_2 <- felm(bias_grp_mem_zip ~ population_density + 
+                     median_household_income +
+                     pop2018 +
+                     diversity +
+                     unemployment_rate | 0 | (segregation ~ D3B) , data=zips)
+
+zips$city_factor = as.factor(zips$CBSA.title)
+
+iv_model_3 <- felm(bias_grp_mem_zip ~ population_density + 
+                     median_household_income +
+                     pop2018 +
+                     diversity +
+                     unemployment_rate | city_factor | (segregation ~ D3B) , data=zips)
+
+table <- stargazer(iv_model_0, iv_model_1, iv_model_2, iv_model_3, table.placement="H",
+                   add.lines = list(c("Simple Controls", "No", "Yes", "Yes", "Yes"), c("Full Controls", "No", "No", "Yes", "Yes"), c("City Fixed Effects", "No", "No", "No", "Yes")))
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/iv_stage_2_intersection_density.txt")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Instrumenting with all three urban form measures
+
+```{r}
+ols_stage_1_0 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA, data=zips)
+ols_stage_1_1 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA + population_density + median_household_income, data=zips)
+ols_stage_1_2 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA + 
+                     pop2018 +
+                     population_density +
+                     median_household_income +
+                     diversity + 
+                     unemployment_rate,
+                     data=zips)
+ols_stage_1_3 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA + 
+                     pop2018 +
+                     population_density +
+                     median_household_income +
+                     diversity + 
+                     unemployment_rate +
+                     as.factor(CBSA.title),
+                     data=zips)
+
+table <- stargazer(ols_stage_1_0, ols_stage_1_1, ols_stage_1_2, ols_stage_1_3, table.placement="H",
+                   add.lines = list(c("Simple Controls", "No", "Yes", "Yes", "Yes"), c("Full Controls", "No", "No", "Yes", "Yes"), c("City Fixed Effects", "No", "No", "No", "Yes")))
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/iv_stage_1_urban_form.txt")
+```
+
+
+
+```{r}
+iv_model_0 <- felm(bias_grp_mem_zip ~ felm(segregation~D3B +  D1C8_ENT + D2B_E8MIXA)$resid, data=zips)
+iv_model_1 <- felm(bias_grp_mem_zip ~ population_density + median_household_income | 0 | (segregation ~ D3B + D1C8_ENT + D2B_E8MIXA) , data=zips)
+iv_model_2 <- felm(bias_grp_mem_zip ~ population_density + 
+                     median_household_income +
+                     pop2018 +
+                     diversity +
+                     unemployment_rate | 0 | (segregation ~ D3B + D1C8_ENT + D2B_E8MIXA) , data=zips)
+
+zips$city_factor = as.factor(zips$CBSA.title)
+
+iv_model_3 <- felm(bias_grp_mem_zip ~ population_density + 
+                     median_household_income +
+                     pop2018 +
+                     diversity +
+                     unemployment_rate | city_factor | (segregation ~ D3B + D1C8_ENT + D2B_E8MIXA) , data=zips)
+
+table <- stargazer(iv_model_0, iv_model_1, iv_model_2, iv_model_3, table.placement="H",
+                   add.lines = list(c("Simple Controls", "No", "Yes", "Yes", "Yes"), c("Full Controls", "No", "No", "Yes", "Yes"), c("City Fixed Effects", "No", "No", "No", "Yes")))
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/iv_stage_2_urban_form.txt")
+```
+
+
+
+
+
+
+
+
+
+

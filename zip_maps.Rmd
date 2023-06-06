@@ -1,0 +1,89 @@
+---
+title: "Zip Maps"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+library(usmap)
+rm(list = ls())
+
+setwd("~/Desktop/Thesis")
+
+data <- read.csv("Data/working/data_merged_zip.csv")
+cuebiq <- read.csv("Data/working/cuebiq_zip.csv")
+```
+
+# Aggregate Segregation over zips
+```{r}
+cuebiq$bias <- ((cuebiq$p1a + cuebiq$p2a) - (cuebiq$p3a + cuebiq$p4a))^2
+
+cols = cuebiq %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+```
+
+# Group by counties - aggregate with population weighted mean
+```{r}
+cols <- zips %>% select(
+  pop2018,
+  county,
+  D3B,
+  D2B_E8MIXA,
+  D1C8_ENT,
+  segregation,
+  bias_grp_mem_zip,
+  ec_zip
+)
+
+counties <- cols %>% 
+  group_by(county) %>%
+  summarize_at(vars(D3B:ec_zip), funs(weighted.mean(., w=pop2018, na.rm=TRUE)))
+```
+
+# BOSTON 
+```{r}
+df <- data.frame(
+    fips = counties$county,
+    values = counties$D3B
+)
+df <- mutate(df, values = ntile(df$values,100))
+
+
+plot_usmap(data = df, include = c("MA"), color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "Street Intersection Density (Percentile)") + theme(legend.position = "right")
+
+plot_usmap(data = df, include = c("CA"), color = "NA") + 
+  scale_fill_continuous(type = "viridis", name = "Street Intersection Density (Percentile)") + theme(legend.position = "right")
+```
+

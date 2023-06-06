@@ -1,0 +1,97 @@
+---
+title: "Cuebiq Cleaning"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(zipcodeR)
+library(ggmap)
+library(tidygeocoder)
+library(httr)
+library(data.table)
+library(cowplot)
+```
+
+# Load Data
+```{r}
+boston = read_delim("Data/raw/dataset_places_Boston_FSQ.csv", delim="|")
+chicago = read_delim("Data/raw/dataset_places_Chicago_FSQ.csv", delim="|")
+dallas = read_delim("Data/raw/dataset_places_Dallas_FSQ.csv", delim="|")
+detroit = read_delim("Data/raw/dataset_places_Detroit_FSQ.csv", delim="|")
+la = read_delim("Data/raw/dataset_places_Los Angeles_FSQ.csv", delim="|")
+miami = read_delim("Data/raw/dataset_places_Miami_FSQ.csv", delim="|")
+ny = read_delim("Data/raw/dataset_places_New York_FSQ.csv", delim="|")
+philadelphia = read_delim("Data/raw/dataset_places_Philadelphia_FSQ.csv", delim="|")
+sf = read_delim("Data/raw/dataset_places_San Francisco_FSQ.csv", delim="|")
+seattle = read_delim("Data/raw/dataset_places_Seattle_FSQ.csv", delim="|")
+washington = read_delim("Data/raw/dataset_places_Washington_FSQ.csv", delim="|")
+```
+
+```{r}
+boston$city_name <- "Boston"
+boston$state <- 025
+
+chicago$city_name <- "Chicago"
+chicago$state <- 017
+
+dallas$city_name <- "Dallas"
+dallas$state <- 048
+
+detroit$city_name <- "Detroit"
+detroit$state <- 026
+
+la$city_name <- "Los Angeles"
+la$state <- 006
+
+miami$city_name <- "Miami"
+miami$state <- 012
+
+ny$city_name <- "New York City"
+ny$state <- 036
+
+philadelphia$city_name <- "Philadelphia"
+philadelphia$state <- 042
+
+sf$city_name <- "San Francisco"
+sf$state <- 006
+
+seattle$city_name <- "Seattle"
+seattle$state <- 053
+
+washington$city_name <- "Washington"
+washington$state <- 011
+```
+
+```{r}
+cuebiq <- rbind(boston, chicago, dallas, detroit, la, miami, ny, philadelphia, sf, seattle, washington)
+```
+
+# Get address for every place
+```{r}
+cuebiq_test <- head(cuebiq, 10)
+set_config(config(ssl_verifypeer = 0L))
+
+cuebiq["lat"] = signif(cuebiq["lat"], digits = 4)
+cuebiq["lon"] = signif(cuebiq["lon"], digits = 4)
+
+cuebiq %>% group_by(lat,lon) %>%
+      summarize(Count = n())
+
+cuebiq <- as.tibble(cuebiq)
+
+# Truncate lat/long
+cuebiq <- cuebiq %>%
+  reverse_geocode(lat , lon, method = 'osm', address = address_found, full_results = TRUE)
+
+cuebiq <- apply(cuebiq,2,as.character)
+write.csv(cuebiq, "Data/working/cuebiq_zip.csv")
+```

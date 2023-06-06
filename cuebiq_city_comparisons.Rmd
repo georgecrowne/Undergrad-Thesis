@@ -1,0 +1,1081 @@
+---
+title: "Cuebiq City Comparisons"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/Desktop/Thesis')
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+# install.packages("stargazer")
+library(stargazer)
+library(jtools)
+library(ggrepel)
+library(cowplot)
+```
+
+```{r}
+rm(list = ls())
+cuebiq_data = read.csv("Data/working/cuebiq_zip.csv")
+data = read.csv("Data/working/data_merged_zip.csv")
+cbsa = read.csv("Data/raw/cbsa2fipsxw.csv")
+```
+
+# Get aggregated experienced segregation for every zip
+```{r}
+cuebiq_data$bias <- ((cuebiq_data$p1a + cuebiq_data$p2a) - (cuebiq_data$p3a + cuebiq_data$p4a))^2
+
+cols = cuebiq_data %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+```
+
+#Standardize all variables
+```{r}
+zips$segregation = scale(zips$segregation)
+zips$bias_grp_mem_zip = scale(zips$bias_grp_mem_zip)
+zips$D3B = scale(zips$D3B)
+zips$D2B_E8MIXA = scale(zips$D2B_E8MIXA)
+zips$D1C8_ENT = scale(zips$D1C8_ENT)
+zips$population_density = scale(zips$population_density)
+zips$pop2018 = scale(zips$pop2018)
+zips$median_household_income = scale(zips$median_household_income)
+zips$diversity = scale(zips$diversity)
+zips$college_rates = scale(zips$college_rates)
+zips$unemployment_rate = scale(zips$unemployment_rate)
+```
+
+# Get combined urban form measure
+```{r}
+
+```
+
+# PCA
+```{r}
+urban_form_measures <- zips %>% select(D1C8_ENT, D3B, D2B_E8MIXA)
+
+# Run PCA on the selected columns
+urban_form_pca <- prcomp(urban_form_measures, scale = TRUE)
+
+# Extract the first principal component as the composite measure
+urban_form_composite <- urban_form_pca$x[,1]
+
+zips$urban_form <- urban_form_composite
+```
+
+# Factor analysis
+```{r}
+
+```
+
+# Match each zip code to a CBSA
+```{r}
+df <- select(cbsa, fipscountycode, fipsstatecode, cbsatitle)
+df <- rename(df, "county_code" = "fipscountycode")
+df <- rename(df, "Geo_STATE" = "fipsstatecode")
+
+
+zips$county_code <- zips$county %% 1000
+
+
+zips <- zips %>%
+  left_join(df, by = c("county_code", "Geo_STATE"))
+
+
+# BOSTON
+zips$cbsatitle[zips$cbsatitle == "Barnstable Town, MA"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$cbsatitle[zips$cbsatitle == "Manchester-Nashua, NH"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$cbsatitle[zips$cbsatitle == "Worcester, MA-CT"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$cbsatitle[zips$cbsatitle == "Providence-Warwick, RI-MA"] <- "Boston-Cambridge-Newton, MA-NH"
+zips$cbsatitle[zips$cbsatitle == "Portland-South Portland, ME"] <- "Boston-Cambridge-Newton, MA-NH"
+
+# NYC
+zips$cbsatitle[zips$cbsatitle == "Bridgeport-Stamford-Norwalk, CT"] <- "New York-Newark-Jersey City, NY-NJ-PA"
+zips$cbsatitle[zips$cbsatitle == "Kingston, NY"] <- "New York-Newark-Jersey City, NY-NJ-PA"
+
+# PHILLY
+zips$cbsatitle[zips$cbsatitle == "Atlantic City-Hammonton, NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$cbsatitle[zips$cbsatitle == "Allentown-Bethlehem-Easton, PA-NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$cbsatitle[zips$cbsatitle == "Trenton, NJ"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+zips$cbsatitle[zips$cbsatitle == "Lancaster, PA"] <- "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD"
+
+# DC
+zips$cbsatitle[zips$cbsatitle == "Baltimore-Columbia-Towson, MD"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$cbsatitle[zips$cbsatitle == "Dover, DE"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$cbsatitle[zips$cbsatitle == "Richmond, VA"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+zips$cbsatitle[zips$cbsatitle == "Winchester, VA-WV"] <- "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+
+# CHICAGO
+zips$cbsatitle[zips$cbsatitle == "Michigan City-La Porte, IN"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$cbsatitle[zips$cbsatitle == "Racine, WI"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$cbsatitle[zips$cbsatitle == "Ottawa-Peru, IL" ] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$cbsatitle[zips$cbsatitle == "Pontiac, IL"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+zips$cbsatitle[zips$cbsatitle == "Kankakee, IL"] <- "Chicago-Naperville-Elgin, IL-IN-WI"
+
+# DETROIT
+zips$cbsatitle[zips$cbsatitle == "Ann Arbor, MI"] <- "Detroit-Warren-Dearborn, MI"
+zips$cbsatitle[zips$cbsatitle == "Flint, MI"] <- "Detroit-Warren-Dearborn, MI"
+
+# DALLAS 
+zips$cbsatitle[zips$cbsatitle == "Athens, TX"] <- "Dallas-Fort Worth-Arlington, TX"
+zips$cbsatitle[zips$cbsatitle == "Mineral Wells, TX"] <- "Dallas-Fort Worth-Arlington, TX"
+
+# LOS ANGELES
+zips$cbsatitle[zips$cbsatitle == "Oxnard-Thousand Oaks-Ventura, CA"] <- "Los Angeles-Long Beach-Anaheim, CA"
+zips$cbsatitle[zips$cbsatitle == "Riverside-San Bernardino-Ontario, CA"] <- "Los Angeles-Long Beach-Anaheim, CA"
+zips$cbsatitle[zips$cbsatitle == "Bakersfield, CA" ] <- "Los Angeles-Long Beach-Anaheim, CA"
+
+# SAN FRANCISCO
+zips$cbsatitle[zips$cbsatitle == "San Jose-Sunnyvale-Santa Clara, CA"  ] <- "San Francisco-Oakland-Hayward, CA"
+
+# SEATTLE
+zips$cbsatitle[zips$cbsatitle == "Oak Harbor, WA"] <- "Seattle-Tacoma-Bellevue, WA"
+zips$cbsatitle[zips$cbsatitle =="Bremerton-Silverdale, WA"] <- "Seattle-Tacoma-Bellevue, WA"
+
+cbsas <- c(
+  "New York-Newark-Jersey City, NY-NJ-PA",
+  "Los Angeles-Long Beach-Anaheim, CA",
+  "Chicago-Naperville-Elgin, IL-IN-WI",
+  "Dallas-Fort Worth-Arlington, TX",
+  "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD",
+  "Washington-Arlington-Alexandria, DC-VA-MD-WV",
+  "Miami-Fort Lauderdale-West Palm Beach, FL",
+  "Boston-Cambridge-Newton, MA-NH",
+  "San Francisco-Oakland-Hayward, CA",
+  "Detroit-Warren-Dearborn, MI",
+  "Seattle-Tacoma-Bellevue, WA"
+)
+
+zips <- subset(zips, cbsatitle %in% cbsas)
+
+unique(zips$cbsatitle)
+
+```
+
+# Group by CBSA
+```{r}
+cols <- zips %>% select(
+  cbsatitle,
+  pop2018,
+  D3B,
+  D2B_E8MIXA,
+  D1C8_ENT,
+  segregation,
+  # urban_form,
+  bias_grp_mem_zip,
+)
+
+cities <- cols %>%
+  group_by(cbsatitle) %>%
+  summarize_at(vars(D3B:bias_grp_mem_zip),funs(weighted.mean(., w=pop2018, na.rm=TRUE)))
+
+cities[cities$cbsatitle == "Boston-Cambridge-Newton, MA-NH",]$cbsatitle = "Boston"
+cities[cities$cbsatitle == "Chicago-Naperville-Elgin, IL-IN-WI",]$cbsatitle = "Chicago"
+cities[cities$cbsatitle == "Dallas-Fort Worth-Arlington, TX",]$cbsatitle = "Dallas"
+cities[cities$cbsatitle == "Detroit-Warren-Dearborn, MI",]$cbsatitle = "Detroit"
+cities[cities$cbsatitle == "Los Angeles-Long Beach-Anaheim, CA",]$cbsatitle = "Los Angeles"
+cities[cities$cbsatitle == "Miami-Fort Lauderdale-West Palm Beach, FL",]$cbsatitle = "Miami"
+cities[cities$cbsatitle == "New York-Newark-Jersey City, NY-NJ-PA",]$cbsatitle = "New York City"
+cities[cities$cbsatitle == "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD",]$cbsatitle = "Philadelphia"
+cities[cities$cbsatitle == "Seattle-Tacoma-Bellevue, WA",]$cbsatitle = "Seattle"
+cities[cities$cbsatitle == "San Francisco-Oakland-Hayward, CA",]$cbsatitle = "San Francisco"
+cities[cities$cbsatitle == "Washington-Arlington-Alexandria, DC-VA-MD-WV",]$cbsatitle = "Washington"
+```
+
+```{r}
+head(cities)
+(cities[cities$cbsatitle == "Detroit",]$D3B - mean(cities$D3B)) / mean(cities$D3B)
+(cities[cities$cbsatitle == "Detroit",]$D3B - cities[cities$cbsatitle == "Los Angeles",]$D3B) / cities[cities$cbsatitle == "Los Angeles",]$D3B
+
+(cities[cities$cbsatitle == "Detroit",]$D1C8_ENT - mean(cities$D1C8_ENT)) / mean(cities$D1C8_ENT)
+(cities[cities$cbsatitle == "Detroit",]$D2B_E8MIXA - mean(cities$D2B_E8MIXA)) / mean(cities$D2B_E8MIXA)
+
+(cities[cities$cbsatitle == "Detroit",]$segregation - mean(cities$segregation)) / mean(cities$segregation)
+(cities[cities$cbsatitle == "Detroit",]$segregation - cities[cities$cbsatitle == "Seattle",]$segregation) / cities[cities$cbsatitle == "Seattle",]$segregation
+
+
+```
+
+```{r}
+cities$urban_form2 = (scale(cities$D3B) + scale(cities$D2B_E8MIXA) + scale(cities$D1C8_ENT))/3
+```
+
+```{r}
+test <- subset(cities, cbsatitle == "Washington")
+test$D3B
+
+test2 <- subset(cities, cbsatitle == "Detroit")
+test2$D3B
+```
+
+
+# Plot all cities (Urban Form vs Segregation)
+```{r}
+ggplot(cities, aes(x = D2B_E8MIXA, y = segregation)) +
+  geom_point(color="magenta", size=3) +
+  geom_label_repel(aes(label = cbsatitle),
+                    fill="darkblue", color = 'white',
+                    size = 4) +
+  geom_smooth(method="lm", formula=y~x) +
+  xlab("Urban Form") + 
+  ylab("Experienced Economic Segregation")
+
+# ggsave("cities_urban_form_vs_segregation_plot.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Plot all cities (Segregation vs Bias)
+```{r}
+ggplot(cities, aes(x = segregation, y = bias_grp_mem_zip)) +
+  geom_point(color="magenta", size=3) +
+  geom_label_repel(aes(label = cbsatitle),
+                    fill="darkblue", color = 'white',
+                    size = 4) +
+  xlab("Experienced Economic Segregation") + 
+  ylab("Friending Bias")
+
+# ggsave("cities_segregation_vs_bias_plot.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+ggplot(zips, aes(x = segregation, y = bias_grp_mem_zip, color = cbsatitle)) +
+  # geom_point( size=1, alpha=0.3) +
+  geom_smooth(method='lm', formula=y~x) +
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=1, geom='point', alpha=0.2) +
+  xlab("Experienced Economic Segregation") +
+  ylab("Friending Bias") +
+  facet_wrap(~cbsatitle)
+```
+
+
+
+```{r}
+(cities[cities$cbsatitle == "Detroit",]$D3B - mean(cities$D3B))/sd(cities$D3B)
+(cities[cities$cbsatitle == "Detroit",]$D1C8_ENT - mean(cities$D1C8_ENT))/sd(cities$D1C8_ENT)
+(cities[cities$cbsatitle == "Detroit",]$D2B_E8MIXA - mean(cities$D2B_E8MIXA))/sd(cities$D2B_E8MIXA)
+
+(cities[cities$cbsatitle == "Detroit",]$D2B_E8MIXA - cities[cities$cbsatitle == "San Francisco",]$D2B_E8MIXA)/sd(cities$D2B_E8MIXA)
+(cities[cities$cbsatitle == "Detroit",]$D2B_E8MIXA - max(cities$D2B_E8MIXA))/sd(cities$D2B_E8MIXA)
+(cities[cities$cbsatitle == "Detroit",]$D3B - max(cities$D3B))/sd(cities$D3B)
+(cities[cities$cbsatitle == "Detroit",]$D1C8_ENT - max(cities$D1C8_ENT))/sd(cities$D1C8_ENT)
+
+
+```
+
+
+# Visualizing Intersection Density
+```{r}
+cities$D3B_z <- round((cities$D3B - mean(cities$D3B))/sd(cities$D3B), 2)  # compute normalized mpg
+cities$D3B_flag <- ifelse(cities$D3B_z < 0, "below", "above")  # above / below avg flag
+cities <- cities[order(cities$D3B_z), ]  # sort
+cities$cbsatitle <- factor(cities$cbsatitle, levels = cities$cbsatitle)  # convert to factor to retain sorted order in plot.
+
+
+ggplot(cities, aes(x=cbsatitle, y=D3B_z, label='Street Intersection Density')) + 
+  geom_bar(stat='identity', aes(fill=D3B_flag), width=.5)  +
+  scale_fill_manual(name="Street Intersection Density", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#00ba38", "below"="#f8766d")) + 
+  labs(title= "Intersection Density") + 
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_text(size=12, face="bold"),
+        legend.position = "none") +
+  ylab("Intersection Density") +
+  coord_flip()
+
+# ggsave("city_rank_intersection_density.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs", width=5, height=4)
+
+```
+
+# Visualizing Entertainment Place Density
+```{r}
+cities$D1C8_ENT_z <- round((cities$D1C8_ENT - mean(cities$D1C8_ENT))/sd(cities$D1C8_ENT), 2)  # compute normalized mpg
+cities$D1C8_ENT_flag <- ifelse(cities$D1C8_ENT_z < 0, "below", "above")  # above / below avg flag
+cities <- cities[order(cities$D1C8_ENT_z), ]  # sort
+cities$cbsatitle <- factor(cities$cbsatitle, levels = cities$cbsatitle)  # convert to factor to retain sorted order in plot.
+
+ggplot(cities, aes(x=cbsatitle, y=D1C8_ENT_z, label='Entertainment Place Density')) + 
+  geom_bar(stat='identity', aes(fill=D1C8_ENT_flag), width=.5)  +
+  scale_fill_manual(name="Entertainment Place Density", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#00ba38", "below"="#f8766d")) + 
+   labs(title= "Entertainment Place Density") + 
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_text(size=12, face="bold"),
+        legend.position = "none") +
+  ylab("Entertainment Place Density") +
+  coord_flip()
+
+ggsave("city_rank_entertainment_place_density.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs", width=5, height=4)
+```
+
+# Visualizing Employment Entropy
+```{r}
+cities$D2B_E8MIXA_z <- round((cities$D2B_E8MIXA - mean(cities$D2B_E8MIXA))/sd(cities$D2B_E8MIXA), 2)  # compute normalized mpg
+cities$D2B_E8MIXA_flag <- ifelse(cities$D2B_E8MIXA_z < 0, "below", "above")  # above / below avg flag
+cities <- cities[order(cities$D2B_E8MIXA_z), ]  # sort
+cities$cbsatitle <- factor(cities$cbsatitle, levels = cities$cbsatitle)  # convert to factor to retain sorted order in plot.
+
+ggplot(cities, aes(x=cbsatitle, y=D2B_E8MIXA_z, label='Employment Entropy')) + 
+  geom_bar(stat='identity', aes(fill=D2B_E8MIXA_flag), width=.5)  +
+  scale_fill_manual(name="Employment Entropy", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#00ba38", "below"="#f8766d")) + 
+   labs(title= "Employment Entropy") + 
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_text(size=12, face="bold"),
+        legend.position = "none") +
+  ylab("Employment Entropy") +
+  coord_flip()
+
+# ggsave("city_rank_employment_entropy.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs", width=5, height=4)
+```
+
+# Visualizing Experienced Segregation
+```{r}
+cities$segregation_z <- round((cities$segregation - mean(cities$segregation))/sd(cities$segregation), 2)  # compute normalized mpg
+cities$segregation_flag <- ifelse(cities$segregation_z < 0, "below", "above")  # above / below avg flag
+cities <- cities[order(cities$segregation_z), ]  # sort
+cities$cbsatitle <- factor(cities$cbsatitle, levels = cities$cbsatitle)  # convert to factor to retain sorted order in plot.
+
+ggplot(cities, aes(x=cbsatitle, y=segregation_z, label='Experienced Segregation')) + 
+  geom_bar(stat='identity', aes(fill=segregation_flag), width=.5)  +
+  scale_fill_manual(name="Experienced Segregation", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#f8766d", "below"="#00ba38")) + 
+   labs(title= "Experienced Segregation") + 
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_text(size=12, face="bold"),
+        legend.position = "none") +
+  ylab("Experienced Segregation") +
+  coord_flip()
+
+ggsave("city_rank_segregation.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs", width=5, height=4)
+```
+
+# Visualizing Friending Bias
+```{r}
+cities$bias_grp_mem_zip_z <- round((cities$bias_grp_mem_zip - mean(cities$bias_grp_mem_zip))/sd(cities$bias_grp_mem_zip), 2)  # compute normalized mpg
+cities$bias_grp_mem_zip_flag <- ifelse(cities$bias_grp_mem_zip_z < 0, "below", "above")  # above / below avg flag
+cities <- cities[order(cities$bias_grp_mem_zip_z), ]  # sort
+cities$cbsatitle <- factor(cities$cbsatitle, levels = cities$cbsatitle)  # convert to factor to retain sorted order in plot.
+
+ggplot(cities, aes(x=cbsatitle, y=bias_grp_mem_zip_z, label='Friending Bias')) + 
+  geom_bar(stat='identity', aes(fill=bias_grp_mem_zip_flag), width=.5)  +
+  scale_fill_manual(name="Experienced Segregation", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#f8766d", "below"="#00ba38")) + #f8766d
+   labs(title= "Friending Bias") + 
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_text(size=12, face="bold"),
+        legend.position = "none") +
+  ylab("Friending Bias") +
+  coord_flip()
+
+ggsave("city_rank_bias.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs", width=5, height=4)
+```
+
+# Create Segregation and Urban form percentiles
+```{r}
+zips$D3B_percentile = zips$D3B
+zips <- mutate(zips, D3B_percentile = ntile(zips$D3B_percentile, 100))
+zips$D2B_E8MIXA_percentile = zips$D2B_E8MIXA
+zips <- mutate(zips, D2B_E8MIXA_percentile = ntile(zips$D2B_E8MIXA_percentile, 100))
+zips$D1C8_ENT_percentile = zips$D1C8_ENT
+zips <- mutate(zips, D1C8_ENT_percentile = ntile(zips$D1C8_ENT_percentile, 100))
+zips$urban_score = (zips$D3B_percentile + zips$D2B_E8MIXA_percentile + zips$D1C8_ENT_percentile)/3
+zips$segregation_percentile = zips$segregation
+zips <- mutate(zips, segregation_percentile = ntile(zips$segregation_percentile, 100))
+zips$bias_grp_mem_zip_percentile = zips$bias_grp_mem_zip
+zips <- mutate(zips, bias_grp_mem_zip_percentile = ntile(zips$bias_grp_mem_zip_percentile, 100))
+```
+
+####### Seattle ####### 
+
+```{r}
+(cities[cities$cbsatitle == "Seattle",]$segregation - mean(cities$segregation))/sd(cities$segregation)
+cities[cities$cbsatitle == "Seattle",]$segregation
+mean(cities$segregation)
+
+(cities[cities$cbsatitle == "Seattle",]$bias_grp_mem_zip - mean(cities$bias_grp_mem_zip))/sd(cities$bias_grp_mem_zip)
+cities[cities$cbsatitle == "Seattle",]$bias_grp_mem_zip
+mean(cities$bias_grp_mem_zip)
+
+```
+
+
+# Subset
+```{r}
+seattle <- subset(zips, cbsatitle == "Seattle-Tacoma-Bellevue, WA")
+
+(seattle[seattle$zip == 98037,]$segregation - mean(seattle$segregation))/sd(seattle$segregation)
+(seattle[seattle$zip == 98037,]$bias_grp_mem_zip - mean(seattle$bias_grp_mem_zip, na.rm=TRUE))/sd(seattle$bias_grp_mem_zip, na.rm=TRUE)
+
+(seattle[seattle$zip == 98037,]$D3B - mean(seattle$D3B, na.rm=TRUE))/sd(seattle$D3B, na.rm=TRUE)
+(seattle[seattle$zip == 98037,]$D2B_E8MIXA - mean(seattle$D2B_E8MIXA, na.rm=TRUE))/sd(seattle$D2B_E8MIXA, na.rm=TRUE)
+(seattle[seattle$zip == 98037,]$D1C8_ENT - mean(seattle$D1C8_ENT, na.rm=TRUE))/sd(seattle$D1C8_ENT, na.rm=TRUE)
+98404
+```
+
+```{r}
+seattle <- subset(zips, cbsatitle == "Seattle-Tacoma-Bellevue, WA")
+
+(seattle[seattle$zip == 98404,]$segregation - mean(seattle$segregation))/sd(seattle$segregation)
+(seattle[seattle$zip == 98404,]$bias_grp_mem_zip - mean(seattle$bias_grp_mem_zip, na.rm=TRUE))/sd(seattle$bias_grp_mem_zip, na.rm=TRUE)
+
+(seattle[seattle$zip == 98404,]$D3B - mean(seattle$D3B, na.rm=TRUE))/sd(seattle$D3B, na.rm=TRUE)
+(seattle[seattle$zip == 98404,]$D2B_E8MIXA - mean(seattle$D2B_E8MIXA, na.rm=TRUE))/sd(seattle$D2B_E8MIXA, na.rm=TRUE)
+(seattle[seattle$zip == 98404,]$D1C8_ENT - mean(seattle$D1C8_ENT, na.rm=TRUE))/sd(seattle$D1C8_ENT, na.rm=TRUE)
+
+```
+
+#Find Seattle zips
+# Good Zip = 98037
+```{r}
+test <- subset(seattle, segregation < 0.2)
+head(test)
+
+seattle_good <- subset(seattle, zip == 98037)
+mean(seattle$diversity, na.rm=TRUE)
+seattle_good$D2B_E8MIXA
+```
+
+# Bad Zip = 98404
+```{r}
+sample <- subset(seattle, segregation > 0.5)
+head(sample)
+
+seattle_bad <- subset(seattle, zip == 98404)
+mean(seattle$D1C8_ENT, na.rm=TRUE)
+seattle_bad$D1C8_ENT
+
+```
+
+```{r}
+ggplot(seattle, aes(x = segregation, y = bias_grp_mem_zip)) +
+  geom_point(size=1) +
+  geom_smooth(method='lm',formula=y~x) +
+  geom_point(data = seattle_good, aes(x=segregation, y=bias_grp_mem_zip), color="green", size=4) +
+  geom_text(data=seattle_good, aes(x=segregation, y=bias_grp_mem_zip), label="Lynnwood, WA (98037)", nudge_x = 0.03, nudge_y = -0.01) +
+  geom_point(data = seattle_bad, aes(x=segregation, y=bias_grp_mem_zip), color="red", size=4) +
+  geom_text(data=seattle_bad, aes(x=segregation, y=bias_grp_mem_zip), label="Tacoma, WA (98404)", nudge_x = 0.03, nudge_y = -0.01) +
+  xlab("Experienced Economic Segregation") + 
+  ylab("Friending Bias")
+
+# ggsave("seattle_segregation_vs_friending_bias.pdf", path="/Users/georgecrowne/Desktop/Thesis/figs")
+
+```
+
+```{r}
+seattle$urban_form = scale((scale(seattle$D3B) + scale(seattle$D1C8_ENT) + scale(seattle$D2B_E8MIXA))/3)
+```
+
+
+```{r}
+ggplot(seattle, aes(x = urban_form, y = segregation)) +
+  geom_point(size=1) +
+  geom_smooth(method='lm',formula=y~x) +
+  geom_point(data = seattle_good, aes(x=urban_form, y=segregation), color="green", size=4) +
+  geom_text(data=seattle_good, aes(x=urban_form, y=segregation), label="Lynnwood, WA (98037)", nudge_x = 0.03, nudge_y = -0.01) +
+  geom_point(data = seattle_bad, aes(x=urban_form, y=segregation), color="red", size=4) +
+  geom_text(data=seattle_bad, aes(x=urban_form, y=segregation), label="Tacoma, WA (98404)", nudge_x = 0.03, nudge_y = -0.01) +
+  xlab("Employment Entropy") + 
+  ylab("Experienced Economic Segregation")
+
+summary(lm(segregation ~ urban_form, data=seattle))
+
+# ggsave("seattle_employment_entropy_vs_segregation.pdf", path="/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+
+####### NYC ####### 
+# Subset
+```{r}
+nyc <- subset(zips, cbsatitle == "New York-Newark-Jersey City, NY-NJ-PA")
+```
+#Find nyc zips
+# Good Zip = 10016
+```{r}
+test <- subset(nyc, segregation < 0.3)
+test <- subset(test, bias_grp_mem_zip < 0)
+head(test)
+
+nyc_good <- subset(nyc, zip == 10016)
+mean(nyc$D1C8_ENT, na.rm=TRUE)
+nyc_good$D1C8_ENT
+```
+
+# Bad Zip = 11218
+```{r}
+sample <- subset(nyc, segregation > 0.65)
+nyc_bad <- subset(sample, bias_grp_mem_zip > 0.35)
+head(sample)
+
+nyc_bad <- subset(nyc, zip == 11218)
+mean(nyc$D1C8_ENT, na.rm=TRUE)
+nyc_bad$D1C8_ENT
+
+```
+
+```{r}
+ggplot(nyc, aes(x = segregation, y = bias_grp_mem_zip)) +
+  geom_point(size=1, alpha=0.3) +
+  # stat_summary_bin(fun.y = mean, bins=50,
+  #                  color='black', size=2, geom='point', alpha=1) +
+  geom_smooth(method='lm',formula=y~x) +
+  geom_point(data = nyc_good, aes(x=segregation, y=bias_grp_mem_zip), color="green", size=4) +
+  geom_text(data=nyc_good, aes(x=segregation, y=bias_grp_mem_zip), label="ZIP code 10016", nudge_x = 0.00, nudge_y = -0.03) +
+  geom_point(data = nyc_bad, aes(x=segregation, y=bias_grp_mem_zip), color="red", size=4) +
+  geom_text(data= nyc_bad, aes(x=segregation, y=bias_grp_mem_zip), label="ZIP code 11218", nudge_x = 0.03, nudge_y = 0.03) +
+  xlab("Experienced Economic Segregation") + 
+  ylab("Friending Bias")
+
+ggsave("nyc_segregation_vs_friending_bias.pdf", path="/Users/georgecrowne/Desktop/Thesis/figs")
+
+```
+
+####### DETROIT ##############
+
+# Subset for Detroit
+```{r}
+detroit <- subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+sf <- subset(zips, cbsatitle == "San Francisco-Oakland-Hayward, CA")
+nyc = subset(zips, cbsatitle == "New York-Newark-Jersey City, NY-NJ-PA")
+```
+
+```{r}
+(detroit[detroit$zip == 48226,]$segregation - mean(detroit$segregation))/sd(detroit$segregation)
+mean(detroit$segregation)
+```
+
+
+# Get summary stats for Detroit and SF
+```{r}
+mean(detroit$D3B)
+mean(detroit$D1C8_ENT)
+mean(detroit$D2B_E8MIXA)
+mean(detroit$segregation)
+
+mean(sf$D3B)
+mean(sf$D1C8_ENT)
+mean(sf$D2B_E8MIXA)
+mean(sf$segregation)
+
+(mean(sf$D3B) - mean(detroit$D3B)) / mean(detroit$D3B)
+(mean(sf$D1C8_ENT) - mean(detroit$D1C8_ENT)) / mean(detroit$D1C8_ENT)
+(mean(sf$D2B_E8MIXA) - mean(detroit$D2B_E8MIXA)) / mean(detroit$D2B_E8MIXA)
+
+(mean(sf$segregation) - mean(detroit$segregation)) / mean(detroit$segregation)
+```
+
+# Find bad zip code in Detroit - 48204
+```{r}
+detroit = subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+detroit$D3B_percentile = detroit$D3B
+detroit <- mutate(detroit, D3B_percentile = ntile(detroit$D3B_percentile, 100))
+detroit$D2B_E8MIXA_percentile = detroit$D2B_E8MIXA
+detroit <- mutate(detroit, D2B_E8MIXA_percentile = ntile(detroit$D2B_E8MIXA_percentile, 100))
+detroit$D1C8_ENT_percentile = detroit$D1C8_ENT
+detroit <- mutate(detroit, D1C8_ENT_percentile = ntile(detroit$D1C8_ENT_percentile, 100))
+detroit$urban_score = (detroit$D3B_percentile + detroit$D2B_E8MIXA_percentile + detroit$D1C8_ENT_percentile)/3
+detroit$segregation_percentile = detroit$segregation
+detroit <- mutate(detroit, segregation_percentile = ntile(detroit$segregation_percentile, 100))
+```
+
+```{r}
+detroit_bad$segregation
+mean(detroit$segregation)
+```
+
+
+```{r}
+detroit_good <- subset(detroit, D3B == max(detroit$D3B))
+```
+
+```{r}
+(detroit[detroit$zip == 48226,]$segregation - mean(detroit$segregation))/sd(detroit$segregation)
+detroit_bad <- subset(detroit, zip == 48204)
+(detroit_bad$bias_grp_mem_zip - mean(detroit$bias_grp_mem_zip, na.rm=TRUE))/sd(detroit$bias_grp_mem_zip, na.rm=TRUE)
+(detroit_good$bias_grp_mem_zip - mean(detroit$bias_grp_mem_zip, na.rm=TRUE))/sd(detroit$bias_grp_mem_zip, na.rm=TRUE)
+
+```
+
+
+```{r}
+detroit = subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+detroit_good <- subset(detroit, D3B == max(detroit$D3B))
+
+ggplot() +
+  geom_point(data = detroit, aes(x = D2B_E8MIXA, y = segregation), color="blue") +
+  geom_smooth(data = detroit, aes(x = D2B_E8MIXA, y=segregation), method="lm", formula = y~x)+
+  geom_point(data = detroit_bad, aes(x=D2B_E8MIXA, y=segregation), color="red", size=4) +
+  geom_text(data=detroit_bad, aes(x=D2B_E8MIXA, y=segregation), label="Nardin Park (48204)", nudge_x = 0.04, nudge_y = 0.04) +
+  geom_point(data = detroit_good, aes(x=D2B_E8MIXA, y=segregation), color="dark green", size=4) +
+  geom_text(data= detroit_good, aes(x=D2B_E8MIXA, y=segregation), label="Downtown Core (48226)", nudge_x = 0.01, nudge_y = -0.04) +
+  xlab("Employment Entropy") +
+  ylab("Experienced Economic Segregation")
+
+# ggsave("detroit_employment_entropy_vs_segregation.pdf", path="/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+detroit = subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+detroit_bad <- subset(detroit, zip == 48204)
+detroit_good <- subset(detroit, D3B == max(detroit$D3B))
+
+ggplot() +
+  geom_point(data = detroit, aes(x = segregation, y = bias_grp_mem_zip), color="blue") +
+  geom_smooth(data = detroit, aes(x = segregation, y=bias_grp_mem_zip), method="lm", formula = y~x)+
+  geom_point(data = detroit_bad, aes(x=segregation, y=bias_grp_mem_zip), color="red", size=4) +
+  geom_text(data=detroit_bad, aes(x=segregation, y=bias_grp_mem_zip), label="Nardin Park \n(48204)", nudge_x = 0.045, nudge_y = 0.01) +
+  geom_point(data = detroit_good, aes(x=segregation, y=bias_grp_mem_zip), color="dark green", size=4) +
+  geom_text(data= detroit_good, aes(x=segregation, y=bias_grp_mem_zip), label="Downtown Core (48226)", nudge_x = 0.04, nudge_y = -0.02) +
+  xlab("Experienced Economic Segregation") +
+  ylab("Friending Bias")
+
+ggsave("detroit_segregation_vs_bias.pdf", path="/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+detroit = subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+detroit_bad <- subset(detroit, zip == 48204)
+
+ggplot() +
+  geom_point(data = detroit, aes(x = log(D1C8_ENT), y = segregation), color="blue") +
+  geom_smooth(data = detroit, aes(x = log(D1C8_ENT), y=segregation), method="lm", formula = y~x)+
+  geom_point(data = detroit_bad, aes(x=log(D1C8_ENT), y=segregation), color="red", size=4) +
+  geom_text(data=detroit_bad, aes(x=log(D1C8_ENT), y=segregation), label="Nardin Park (48204)", nudge_x = 0.04, nudge_y = 0.04) +
+  geom_point(data = detroit_good, aes(x=log(D1C8_ENT), y=segregation), color="dark green", size=4) +
+  geom_text(data= detroit_good, aes(x=log(D1C8_ENT), y=segregation), label="Downtown Core (48226)", nudge_x = 0.01, nudge_y = -0.04) +
+  xlab("Log[Entertainment Place Density]") +
+  ylab("Experienced Economic Segregation")
+```
+
+```{r}
+zips$D3B
+detroit = subset(zips, cbsatitle == "Detroit-Warren-Dearborn, MI")
+detroit_bad <- subset(detroit, zip == 48204)
+
+ggplot() +
+  geom_point(data = detroit, aes(x = D3B, y = segregation), color="blue") +
+  geom_smooth(data = detroit, aes(x = D3B, y=segregation), method="lm", formula = y~x)+
+  geom_point(data = detroit_bad, aes(x=D3B, y=segregation), color="red", size=4) +
+  geom_text(data=detroit_bad, aes(x=D3B, y=segregation), label="Nardin Park (48204)", nudge_x = 0.04, nudge_y = 0.04) +
+  geom_point(data = detroit_good, aes(x=D3B, y=segregation), color="dark green", size=4) +
+  geom_text(data= detroit_good, aes(x=D3B, y=segregation), label="Downtown Core (48226)", nudge_x = 0.01, nudge_y = -0.04) +
+  xlab("Log[Entertainment Place Density]") +
+  ylab("Experienced Economic Segregation")
+```
+
+
+```{r}
+ggplot(detroit, aes(x = segregation, y = urban_score)) +
+  geom_point(size=1) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Segregation") + 
+  ylab("Urban Form")
+
+summary(lm(urban_score ~ segregation, data=detroit))
+
+# ggsave("cuebiq_cities_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+zips$D1C8_ENT
+ggplot(sf, aes(x = segregation, y = D1C8_ENT)) +
+  geom_point(size=1) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Segregation") + 
+  ylab("Urban Form")
+
+summary(lm(urban_score ~ segregation, data=sf))
+
+# ggsave("cuebiq_cities_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+ggplot() +
+  geom_point(data = sf, aes(x = segregation, y = urban_score), color = "blue") + # must include argument label "data"
+  geom_point(data = detroit, aes(x = segregation, y = urban_score), color="red")
+```
+
+
+```{r}
+mean(detroit$segregation)
+mean(sf$segregation)
+
+mean(detroit$urban_score)
+mean(sf$urban_score)
+
+ggplot() +
+  geom_point(data = detroit, aes(x = urban_score, y = segregation), color="blue") +
+  geom_smooth(data = detroit, aes(x = urban_score, y=segregation), method="lm", formula = y~x) +
+  geom_point(data = sf, aes(x = urban_score, y = segregation), color="red") +
+  geom_smooth(data = sf, aes(x = urban_score, y=segregation), method="lm", formula = y~x, color = 'red')
+```
+
+
+# Find good zip code in SF - 94111
+```{r}
+sf = subset(zips, cbsatitle == "San Francisco-Oakland-Hayward, CA")
+sf[which.min(sf$segregation),]
+sf$D3B_percentile = sf$D3B
+sf <- mutate(sf, D3B_percentile = ntile(sf$D3B_percentile, 100))
+sf$D2B_E8MIXA_percentile = sf$D2B_E8MIXA
+sf <- mutate(sf, D2B_E8MIXA_percentile = ntile(sf$D2B_E8MIXA_percentile, 100))
+sf$D1C8_ENT_percentile = sf$D1C8_ENT
+sf <- mutate(sf, D1C8_ENT_percentile = ntile(sf$D1C8_ENT_percentile, 100))
+sf$urban_score = (sf$D3B_percentile + sf$D2B_E8MIXA_percentile + sf$D1C8_ENT_percentile)/3
+sf$segregation_percentile = sf$segregation
+sf <- mutate(sf, segregation_percentile = ntile(sf$segregation_percentile, 100))
+```
+```{r}
+sf_good <- subset(sf, zip == 94111)
+sf_good$segregation
+sf_good$D3B
+sf_good$D1C8_ENT
+sf_good$D2B_E8MIXA
+```
+
+
+
+####### Seattle VS NYC ##############
+
+# Subset for seattle and nyc
+```{r}
+nyc = subset(zips, cbsatitle == "New York-Newark-Jersey City, NY-NJ-PA")
+seattle = subset(zips, cbsatitle == "Seattle-Tacoma-Bellevue, WA")
+```
+
+# Plot segregation and friending bias in both cities
+```{r}
+ggplot() +
+  geom_point(data = nyc, aes(x = segregation_percentile, y = bias_grp_mem_zip), color="blue") +
+  geom_smooth(data = nyc, aes(x = segregation_percentile, y=bias_grp_mem_zip), method="lm", formula = y~x) +
+  geom_point(data = seattle, aes(x = segregation_percentile, y = bias_grp_mem_zip), color="red") +
+  geom_smooth(data = seattle, aes(x = segregation_percentile, y=bias_grp_mem_zip), method="lm", formula = y~x, color = 'red')
+```
+
+# Plot segregation and friending bias in Seattle
+
+```{r}
+
+```
+
+
+# Bad NYC zip - 10455
+```{r}
+test <- subset(nyc, zip == 10455)
+head(test$segregation_percentile)
+head(test$bias_grp_mem_zip_percentile)
+```
+
+# Good NYC zip - 10128
+```{r}
+test <- subset(nyc, zip == 10128)
+head(test$segregation_percentile)
+head(test$bias_grp_mem_zip_percentile)
+```
+
+# Seattle Good 
+```{r}
+test <- subset(seattle, segregation_percentile < 5)
+test <- subset(seattle, zip == 98026)
+head(test$segregation_percentile)
+head(test$bias_grp_mem_zip_percentile)
+head(test$population_density)
+```
+
+# NYC And Seattle Means
+```{r}
+mean(nyc$segregation)
+mean(seattle$segregation)
+(mean(nyc$segregation) - mean(seattle$segregation))/mean(seattle$segregation)
+
+mean(nyc$bias_grp_mem_zip, na.rm=TRUE)
+mean(seattle$bias_grp_mem_zip, na.rm=TRUE)
+(mean(nyc$bias_grp_mem_zip, na.rm=TRUE) - mean(seattle$bias_grp_mem_zip, na.rm=TRUE))/mean(seattle$bias_grp_mem_zip, na.rm=TRUE)
+```
+
+
+
+# Map zip codes
+```{r}
+head(zips)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Group cuebiq data by city
+```{r}
+cols = cuebiq_data %>% select(
+  city_name,
+  pcat,
+  nusers,
+  nstays,
+  segregation,
+  p1a,
+  p2a,
+  p3a,
+  p4a,
+)
+
+cities <- cols %>%
+  group_by(city_name) %>%
+  summarize_at(vars(segregation:p4a),funs(weighted.mean(., w=nstays)))
+```
+
+# Get counties in cuebiq CBSAs
+```{r}
+cbsas <- c(
+  "New York-Newark-Jersey City, NY-NJ-PA",
+  "Los Angeles-Long Beach-Anaheim, CA",
+  "Chicago-Naperville-Elgin, IL-IN-WI",
+  "Dallas-Fort Worth-Arlington, TX",
+  "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD",
+  "Washington-Arlington-Alexandria, DC-VA-MD-WV",
+  "Miami-Fort Lauderdale-West Palm Beach, FL",
+  "Boston-Cambridge-Newton, MA-NH",
+  "San Francisco-Oakland-Hayward, CA",
+  "Detroit-Warren-Dearborn, MI",
+  "Seattle-Tacoma-Bellevue, WA"
+)
+
+counties <- subset(cbsa, cbsatitle %in% cbsas)
+counties = rename(counties, "state_fips" = "fipsstatecode")
+counties = rename(counties, "county_fips" = "fipscountycode")
+data = rename(data, "state_fips"= "Geo_STATE")
+data = rename(data, "county_fips" = "county")
+
+counties <- counties %>%
+  left_join(data, by = c("county_fips", "state_fips"))
+```
+
+# See the counties
+```{r}
+df <- data.frame(
+    fips = counties$county_code,
+    values = counties$urban
+)
+
+plot_usmap(data = df, color = "NA")
+
+ggsave("cuebiq_counties.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs/maps")
+```
+
+# Aggregate over the cities
+```{r}
+cols = counties %>% select(
+  cbsatitle,
+  pop2018,
+  ec_county,
+  exposure_grp_mem_county,
+  bias_grp_mem_county
+)
+
+cities_ec <- cols %>%
+  group_by(cbsatitle) %>%
+  summarize_at(vars(ec_county:bias_grp_mem_county),funs(weighted.mean(., w=pop2018, na.rm=TRUE)))
+
+cities_ec[cities_ec$cbsatitle == "Boston-Cambridge-Newton, MA-NH",]$cbsatitle = "Boston"
+cities_ec[cities_ec$cbsatitle == "Chicago-Naperville-Elgin, IL-IN-WI",]$cbsatitle = "Chicago"
+cities_ec[cities_ec$cbsatitle == "Dallas-Fort Worth-Arlington, TX",]$cbsatitle = "Dallas"
+cities_ec[cities_ec$cbsatitle == "Detroit-Warren-Dearborn, MI",]$cbsatitle = "Detroit"
+cities_ec[cities_ec$cbsatitle == "Los Angeles-Long Beach-Anaheim, CA",]$cbsatitle = "Los Angeles"
+cities_ec[cities_ec$cbsatitle == "Miami-Fort Lauderdale-West Palm Beach, FL",]$cbsatitle = "Miami"
+cities_ec[cities_ec$cbsatitle == "New York-Newark-Jersey City, NY-NJ-PA",]$cbsatitle = "New York City"
+cities_ec[cities_ec$cbsatitle == "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD",]$cbsatitle = "Philadelphia"
+cities_ec[cities_ec$cbsatitle == "Seattle-Tacoma-Bellevue, WA",]$cbsatitle = "Seattle"
+cities_ec[cities_ec$cbsatitle == "San Francisco-Oakland-Hayward, CA",]$cbsatitle = "San Francisco"
+cities_ec[cities_ec$cbsatitle == "Washington-Arlington-Alexandria, DC-VA-MD-WV",]$cbsatitle = "Washington"
+
+cities_ec <- rename(cities_ec, "city_name" = "cbsatitle")
+
+cities <- cities %>% 
+  left_join(cities_ec, by = c("city_name"))
+```
+
+```{r}
+ggplot(cities, aes(x = segregation, y = bias_grp_mem_zip)) +
+  geom_point(color="magenta", size=3) +
+  geom_label_repel(aes(label = cbsatitle),
+                    fill="darkblue", color = 'white',
+                    size = 4) +
+  xlab("Segregation") + 
+  ylab("Economic Connectedness")
+
+# ggsave("cuebiq_cities_ec.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+ggplot(cities, aes(x = segregation, y = bias_grp_mem_county)) +
+  geom_point(color="magenta", size=3) +
+  geom_label_repel(aes(label = city_name),
+                    fill="darkblue", color = 'white',
+                    size = 4) +
+  xlab("Segregation") + 
+  ylab("Friending Bias")
+
+ggsave("cuebiq_cities_fb.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+library(ggplot2)
+library(scales)
+theme_set(theme_classic())
+
+
+# prep data
+left_label <- cities$cbsatitle
+right_label <- cities$cbsatitle
+
+cities$segregation_percentile = cities$segregation
+cities <- mutate(cities, segregation_percentile = ntile(cities$segregation_percentile, 100))
+
+cities$bias_grp_mem_zip_percentile = cities$bias_grp_mem_zip
+cities <- mutate(cities, bias_grp_mem_zip_percentile = ntile(cities$bias_grp_mem_zip_percentile, 100))
+
+cities$flag <- ifelse(abs(cities$bias_grp_mem_zip_percentile - cities$segregation_percentile) > 20, "red", "green")
+
+
+# Plot
+p <- ggplot(cities) + geom_segment(aes(x=1, xend=2, y=segregation_percentile, yend=bias_grp_mem_zip_percentile, col=flag), size=.75, show.legend=F) + 
+                  geom_vline(xintercept=1, linetype="dashed", size=.1) + 
+                  geom_vline(xintercept=2, linetype="dashed", size=.1) +
+                  scale_color_manual(labels = c("Up", "Down"), 
+                                     values = c("green"="#00ba38", "red"="#f8766d")) +  # color of lines
+                  labs(x="", y="Mean GdpPerCap") +  # Axis labels
+                  xlim(.5, 2.5) + ylim(0,(1.1*(max(cities$bias_grp_mem_zip_percentile, cities$segregation_percentile))))  # X and Y axis limits
+
+# Add texts
+
+p <- p + geom_text(label= left_label, y=cities$segregation_percentile, x=rep(1, NROW(cities)), hjust=1.1, size=3.5)
+p <- p + geom_text(label= right_label, y=cities$bias_grp_mem_zip_percentile, x=rep(2, NROW(cities)), hjust=-0.1, size=3.5)
+p <- p + geom_text(label="Segregation", x=1, y=1.1*(max(cities$segregation_percentile, cities$bias_grp_mem_zip_percentile)), hjust=1.2, size=5)  # title
+p <- p + geom_text(label="Bias", x=2, y=1.1*(max(cities$segregation_percentile, cities$bias_grp_mem_zip_percentile)), hjust=-0.1, size=5)  # title
+
+# Minify theme
+p + theme(panel.background = element_blank(), 
+           panel.grid = element_blank(),
+           axis.ticks = element_blank(),
+           axis.text.x = element_blank(),
+           panel.border = element_blank(),
+           plot.margin = unit(c(1,2,1,2), "cm"))
+```
+
+```{r}
+library(ggmap)
+library(maps)
+library(maptools)
+zip_shape <- readShapePoly("Data/raw/cb_2018_us_zcta510_500k.shp")
+
+merged_data <- merge(shapefile@data, zips, by.x = "ZCTA5CE10", by.y ="zip")
+
+merged_data$Geo_INTPTLAT
+
+ggplot() +
+  geom_polygon(data = merged_data, aes(x = Geo_INTPTLON, y = Geo_INTPTLAT, fill = segregation)) +
+  coord_equal() +
+  ggtitle("Zip Code Level Data") +
+  scale_fill_gradient(low = "white", high = "red", na.value = "gray80") +
+  theme_void()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(rgdal) 
+library(maptools)
+library(rgdal)
+library(rgeos)
+
+shapefile <- readShapePoly("Data/raw/cb_2018_us_zcta510_500k.shp")
+
+zips$zip = as.character(zips$zip)
+
+zips %>% 
+  mutate(zip = str_pad(zip, 5, side="left", "0"))
+
+states <- map_data("state")
+
+uspoly <- subset(shapefile, ZCTA5CE10 %in% zips$zip)
+
+uspoly$group <- substr(uspoly$ZCTA5CE10, 1,3)
+
+uspoly$ZCTA5CE10 <- droplevels(uspoly$ZCTA5CE10)
+
+uspoly.union <- unionSpatialPolygons(uspoly, uspoly$group)
+
+uspolyfort_A <- fortify(uspoly.union)
+
+usmap_A <- uspolyfort_A %>%
+  select(long, lat, order, group) %>%
+  mutate(Territory_A = "In") %>%
+  mutate(group = as.numeric(group)) %>%
+  bind_rows(states %>%
+              select(long, lat, order, group) %>%
+              mutate(Territory_A = "Out") %>%
+              mutate(group = group + max(as.numeric(uspolyfort_A$group))))
+
+ggplot(usmap_A) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Territory_A, color = Territory_A)) + 
+  scale_colour_manual(aesthetics = "fill", values=c("cornflowerblue", NA)) +
+  scale_colour_manual(aesthetics = "color", values=c("cornflowerblue", "black")) + #Draws borders. (Zip border is the same as fill color for a cleaner look)
+  coord_fixed(1.3) + 
+  guides(fill=FALSE) +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.title.y = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = .5), legend.position ="none")  + 
+  labs(title = "Territory A")
+```
+
+
+

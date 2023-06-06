@@ -1,0 +1,1002 @@
+---
+title: "Urban Design vs Social Capital ZIP CODE LEVEL"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(jtools)
+library(stargazer)
+library(datawizard)
+library(plm)
+library(lfe)
+pacman::p_load(tidyverse, estimatr, ggplot2, dplyr, jtools, ggstance, broom.mixed, fabricatr) # You should install these packages.
+
+rm(list = ls())
+setwd("~/Desktop/Thesis")
+data <- read.csv("Data/working/data_merged_zip.csv")
+cuebiq <- read.csv("Data/working/cuebiq_zip.csv")
+```
+
+# Create Figure
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(median_household_income) +  
+          scale(population_density) +
+          scale(D3B) +
+          scale(D2B_E8MIXA) +
+          scale(D1C8_ENT),
+          data = data)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(data$bias_grp_mem_zip), estimate_horserace_regression(data$ec_zip),
+           estimate_horserace_regression(data$exposure_grp_mem_zip),
+
+           coefs = c(
+                     "Household Income" = "scale(median_household_income)",
+                     "Population Density" = "scale(population_density)",
+                     "Street Intersection Density" = "scale(D3B)",
+                     "Employment Entropy" = "scale(D2B_E8MIXA)",
+                     "Entertainment Place Density" = "scale(D1C8_ENT)"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"))
+
+# ggsave("features_density_horse_race.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+# Create Summary Table
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          log(median_household_income) + 
+          log(population_density) +
+          D3B +
+          D2B_E8MIXA +
+          D1C8_ENT,
+          data = data)
+  return(model)
+}
+
+lm1 <- estimate_horserace_regression(data$ec_zip)
+lm2 <- estimate_horserace_regression(data$bias_grp_mem_zip)
+lm3 <- estimate_horserace_regression(data$exposure_grp_mem_zip)
+
+mean_ec <- round(mean(data$ec_zip, na.rm = TRUE), 3)
+mean_bias <- round(mean(data$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_exp <- round(mean(data$exposure_grp_mem_zip, na.rm = TRUE), 3)
+
+sd_ec <- round(sd(data$ec_zip, na.rm=TRUE), 3)
+sd_bias <- round(sd(data$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_exp <- round(sd(data$exposure_grp_mem_zip, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, 
+          title="Urban Design vs Social Capital",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Household Income",
+            "Population Density",
+            "Street Intersection Density",
+            "Employment Entropy",
+            "Entertainment Place Density"
+            ),
+          add.lines = list(c("Mean", mean_ec, mean_bias, mean_exp), c("Std. Dev", sd_ec, sd_bias, sd_exp)),
+          table.placement="p"
+          )
+
+# write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/table8.txt")
+```
+
+# Get Experienced Segregation and number of visits for each zip
+```{r}
+cuebiq$bias <- ((cuebiq$p1a + cuebiq$p2a) - (cuebiq$p3a + cuebiq$p4a))^2
+
+cols = cuebiq %>% select(
+  postcode,
+  nstays,
+  segregation,
+  bias
+)
+
+zips <- cols %>% 
+  group_by(postcode) %>% 
+  summarize(across(c(segregation, bias),function (x) weighted.mean(x, w=nstays, na.rm=TRUE)))
+
+zips_nstays <- cols %>% 
+  group_by(postcode) %>% 
+  summarize_at(vars(nstays), funs(mean))
+
+# Accounts for DC/Maryland & Virginia issue
+# data[data$state_fips == 24,]$state_fips = 11
+# data[data$state_fips == 51,]$state_fips = 11
+
+zips <- rename(zips, "zip" = "postcode")
+zips$zip = as.integer(zips$zip)
+zips_nstays <- rename(zips_nstays, "zip" = "postcode")
+zips_nstays$zip = as.integer(zips_nstays$zip)
+
+zips <- zips %>%
+  inner_join(data, by = c("zip"))
+
+zips_nstays <- zips_nstays %>%
+  left_join(data, by = c("zip"))
+```
+
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(median_household_income) +  
+          scale(population_density) +
+          scale(D3B) +
+          scale(D2B_E8MIXA) +
+          scale(D1C8_ENT),
+          data = zips)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(zips$segregation),
+           estimate_horserace_regression(zips$segregation),
+
+           coefs = c(
+                     "Household Income" = "scale(median_household_income)",
+                     "Population Density" = "scale(population_density)",
+                     "Street Intersection Density" = "scale(D3B)",
+                     "Employment Entropy" = "scale(D2B_E8MIXA)",
+                     "Entertainment Place Density" = "scale(D1C8_ENT)"
+                     ),
+
+           robust = list("HC0", "HC0"),
+           model.names = ("Experienced Income Segregation"),
+           legend.title = "Model")
+
+ggsave("zip_urban_form_vs_segregation.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          scale(median_household_income) +  
+          scale(population_density) +
+          scale(segregation),
+          data = zips)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(zips$bias_grp_mem_zip),
+           estimate_horserace_regression(zips$bias_grp_mem_zip),
+
+           coefs = c(
+                     "Household Income" = "scale(median_household_income)",
+                     "Population Density" = "scale(population_density)",
+                     "Experienced Income Segregation" = "scale(segregation)"
+                     ),
+
+           robust = list("HC0", "HC0"),
+           model.names = ("Friending Bias"),
+           legend.title = "Model")
+
+ggsave("zip_segregation_vs_friending_bias.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+
+# Don't worry about this
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(scale(outcome) ~
+          scale(log(Median_Household_Income_2020)) + 
+          scale(log(popdensity2010)) +
+          scale(D3B) +
+          scale(D2B_E8MIXA) +
+          scale(NatWalkInd),
+          data = counties)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(counties$bias_grp_mem_county), estimate_horserace_regression(counties$ec_county),
+           estimate_horserace_regression(counties$exposure_grp_mem_county),
+
+           coefs = c("Household Income" = "scale(log(Median_Household_Income_2020))",
+                     "Population Density" = "scale(log(popdensity2010))",
+                     "Street Intersection Density" = "scale(D3B)",
+                     "Employment Entropy" = "scale(D2B_E8MIXA)",
+                     "Walkability Index" = "scale(NatWalkInd)"
+                     ),
+
+           robust = list("HC0","HC0", "HC0"),
+           model.names =c("Friending Bias", "Economic Connectedness", "Exposure"))
+```
+
+#Standardize all variables
+```{r}
+zips$segregation = scale(zips$segregation)
+zips$bias_grp_mem_zip = scale(zips$bias_grp_mem_zip)
+zips$D3B = scale(zips$D3B)
+zips$D2B_E8MIXA = scale(zips$D2B_E8MIXA)
+zips$D1C8_ENT = scale(zips$D1C8_ENT)
+zips$population_density = scale(zips$population_density)
+zips$pop2018 = scale(zips$pop2018)
+zips$median_household_income = scale(zips$median_household_income)
+zips$diversity = scale(zips$diversity)
+zips$college_rates = scale(zips$college_rates)
+zips$unemployment_rate = scale(zips$unemployment_rate)
+
+zips$D1C8_ED = scale(zips$D1C8_ED)
+zips$D1C8_HLTH = scale(zips$D1C8_HLTH)
+zips$D1C8_IND = scale(zips$D1C8_IND)
+zips$D1C8_OFF = scale(zips$D1C8_OFF)
+zips$D1C8_RET = scale(zips$D1C8_RET)
+zips$D1C8_SVC = scale(zips$D1C8_SVC)
+zips$D1C8_PUB = scale(zips$D1C8_PUB)
+
+zips$intersect_density_km = scale(zips$intersect_density_km)
+```
+
+```{r}
+model <- lm(segregation ~ D1C8_ENT, data=zips)
+model2 <- lm(segregation ~ D1C8_ED, data=zips)
+model3<- lm(segregation ~ D1C8_IND, data=zips)
+model4 <- lm(segregation ~ D1C8_OFF, data=zips)
+model5 <- lm(segregation ~ D1C8_RET, data=zips)
+model6 <- lm(segregation ~ D1C8_SVC, data=zips)
+model7 <- lm(segregation ~ D1C8_PUB, data=zips)
+model8 <- lm(segregation ~ D1C8_HLTH, data=zips)
+
+plot_summs(model, model2, model3, model4, model5, model6, model7, model8, colors="Rainbow")
+```
+
+```{r}
+library(coefplot)
+
+model1 <- lm(segregation ~ D1C8_ENT, data = zips)
+model2 <- lm(segregation ~ D1C8_ED, data = zips)
+model3 <- lm(segregation ~ D1C8_PUB, data = zips)
+
+coefplot(list(model1, model2, model3))
+```
+
+
+# Plot segregation against employment entropy
+```{r}
+res1 <- resid(lm(D2B_E8MIXA ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+res2 <- resid(lm(segregation ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+
+summary(lm(segregation ~ D2B_E8MIXA + population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+summary(lm(res2 ~ res1))
+
+df <- data.frame(res1, res2)
+
+ggplot(df,aes(x=res1,y=res2)) + 
+  # geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  xlab("Employment Entropy") + 
+  ylab("Experienced Economic Segrgation")  
+
+# ggsave("zip_employment_entropy_vs_segregation.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+lm1 <- lm(segregation ~ D2B_E8MIXA, data=zips)
+lm2 <- lm(segregation ~ D2B_E8MIXA + population_density + median_household_income, data=zips)
+lm3 <- lm(segregation ~ D2B_E8MIXA + 
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(segregation ~
+            D2B_E8MIXA +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+# mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+# sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Employment Entropy vs Experienced Economic Segregation",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Employment Entropy",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_seg, mean_seg, mean_seg, mean_seg),
+                            c("Std. Dev", sd_seg, sd_seg, sd_seg, sd_seg),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("City Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/employment_entropy_vs_segregation.txt")
+```
+
+# Plot segregation against intersection density
+```{r}
+res1 <- resid(lm(D3B ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+res2 <- resid(lm(segregation ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+
+summary(lm(segregation ~ D3B + population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+summary(lm(res2 ~ res1))
+
+df <- data.frame(res1, res2)
+
+ggplot(df,aes(x=res1,y=res2)) + 
+  # geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  xlab("Street Inersection Density") + 
+  ylab("Experienced Economic Segrgation")  
+
+# ggsave("zip_intersection_density_vs_segregation.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+lm1 <- lm(segregation ~ D3B, data=zips)
+lm2 <- lm(segregation ~ D3B + population_density + median_household_income, data=zips)
+lm3 <- lm(segregation ~ D3B + 
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(segregation ~
+            D3B +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+# mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+# sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Intersection Density vs Experienced Economic Segregation",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Intersection Density",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_seg, mean_seg, mean_seg, mean_seg),
+                            c("Std. Dev", sd_seg, sd_seg, sd_seg, sd_seg),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("County Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+
+# write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/intersection_density_vs_segregation.txt")
+```
+
+```{r}
+quantile(zips$D3B, 0.06)
+test <- subset(zips, D3B < -1.315521 )
+table(test$cbsatitle)
+```
+
+```{r}
+hs <- subset(zips, zip==02138)
+head(hs$bias_grp_mem_zip)
+test <- subset(zips,Geo_STATE==25 & bias_grp_mem_zip > -1.131981 + 0.07 & bias_grp_mem_zip < -1.131981 + 0.09)
+head(test)
+ec <- subset(zips, zip == 02141)
+head(ec$bias_grp_mem_zip)
+```
+
+
+
+```{r}
+summary(lm(segregation ~ D3B + population_density + median_household_income + pop2018 + unemployment_rate + diversity, data=zips))
+summary(lm(segregation ~ intersect_density_km + population_density + median_household_income + pop2018 + unemployment_rate + diversity, data=zips))
+summary(felm(segregation~population_density + median_household_income + pop2018 + unemployment_rate + diversity | 0 | (D3B ~ intersect_density_km), data=zips))
+```
+
+
+```{r}
+lm1 <- lm(segregation ~ intersect_density_km, data=zips)
+lm2 <- lm(segregation ~ intersect_density_km + population_density + median_household_income, data=zips)
+lm3 <- lm(segregation ~ intersect_density_km + 
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(segregation ~
+            intersect_density_km +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+# mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+# sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Intersection Density vs Experienced Economic Segregation",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Intersection Density",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_seg, mean_seg, mean_seg, mean_seg),
+                            c("Std. Dev", sd_seg, sd_seg, sd_seg, sd_seg),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("County Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+```
+
+
+# Plot segregation against entertainment place density
+```{r}
+res1 <- resid(lm(D1C8_ENT ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+res2 <- resid(lm(segregation ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+
+summary(lm(segregation ~ D1C8_ENT + population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+summary(lm(res2 ~ res1))
+
+df <- data.frame(res1, res2)
+
+ggplot(df,aes(x=res1,y=res2)) + 
+  # geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  xlab("Entertainment Place Density") + 
+  ylab("Experienced Economic Segrgation")  
+
+ggsave("zip_entertainment_density_vs_segregation.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+lm1 <- lm(segregation ~ D1C8_ENT, data=zips)
+lm2 <- lm(segregation ~ D1C8_ENT + population_density + median_household_income, data=zips)
+lm3 <- lm(segregation ~ D1C8_ENT + 
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(segregation ~
+            D1C8_ENT +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+# mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+# sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Entertainment Place Density vs Experienced Economic Segregation",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Entertainment Place Density",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "College Rates",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_seg, mean_seg, mean_seg, mean_seg),
+                            c("Std. Dev", sd_seg, sd_seg, sd_seg, sd_seg),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("City Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/entertainment_density_vs_segregation.txt")
+```
+
+
+# Determine magnitudes of changes
+```{r}
+test1 <- subset(zips, D1C8_ENT < 0.02 & D1C8_ENT > -0.02 & State.Abr. == "MA")
+test2 <- subset(zips, D1C8_ENT < 1.03 & D1C8_ENT > 0.97 & State.Abr. == "MA")
+test3 <- subset(zips, D1C8_ENT < 2.2 & D1C8_ENT > 1.8 & State.Abr. == "MA")
+test4 <- subset(zips, D1C8_ENT < 3.1 & D1C8_ENT > 2.9 & State.Abr. == "MA")
+# 02139
+
+hs <- subset(zips, zip == 2116)
+head(hs)
+0.4100111 - 1
+test <- subset(zips, D2B_E8MIXA > -0.6 & D2B_E8MIXA < -0.55  & State.Abr. == "MA")
+
+```
+
+
+# Create figure of urban form effects on segregation
+```{r}
+estimate_horserace_regression = function(outcome) {
+  model <- lm(outcome ~
+          median_household_income +  
+          population_density +
+            pop2018 +
+            diversity +
+            unemployment_rate +
+          D3B +
+          D1C8_ENT +
+          D2B_E8MIXA,
+          data = zips)
+  return(model)
+}
+
+plot_summs(estimate_horserace_regression(zips$segregation),
+           coefs = c(
+                     "Street Intersection Density" = "D3B",
+                     "Entertainment Place Density" = "D1C8_ENT",
+                     "Employment Entropy" = "D2B_E8MIXA"
+                     ),
+           robust = c("HC0"),
+           legend.title = "Outcome",
+           model.names ="Experienced Economic Segregation")
+
+ggsave("features_density_horse_race.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")  
+
+```
+
+# Create table
+```{r}
+lm1 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA , data=zips)
+lm2 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA + population_density + median_household_income, data=zips)
+lm3 <- lm(segregation ~ D3B + D1C8_ENT + D2B_E8MIXA +
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(segregation ~
+            D3B + D1C8_ENT + D2B_E8MIXA  +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+# mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+# sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Urban Form vs Experienced Economic Segregation",
+          covariate.labels=c(
+            "Street Intersection Density",
+            "Entertainment Place Density",
+            "Employment Entropy",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_seg, mean_seg, mean_seg, mean_seg),
+                            c("Std. Dev", sd_seg, sd_seg, sd_seg, sd_seg),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("City Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/urban_form_vs_segregation.txt")
+```
+
+
+
+# experienced Segregation vs Friending bias
+```{r}
+zips = subset(zips, !is.na(bias_grp_mem_zip))
+res1 <- resid(lm(segregation ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+res2 <- resid(lm(bias_grp_mem_zip ~ population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+
+summary(lm(bias_grp_mem_zip ~ segregation + population_density + median_household_income + pop2018 + diversity + unemployment_rate, data=zips))
+summary(lm(res2 ~ res1))
+
+df <- data.frame(res1, res2)
+
+ggplot(df,aes(x=res1,y=res2)) + 
+  # geom_point(alpha = 0.3) +
+  geom_smooth(method='lm',formula=y~x) +
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  xlab("Experienced Economic Segrgation") + 
+  ylab("Friending Bias")  
+
+ggsave("zip_segregation_vs_friending_bias.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+```{r}
+lm1 <- lm(bias_grp_mem_zip ~ segregation, data=zips)
+lm2 <- lm(bias_grp_mem_zip ~ segregation + population_density + median_household_income, data=zips)
+lm3 <- lm(bias_grp_mem_zip ~ segregation + 
+            population_density + 
+            median_household_income +
+            pop2018 +
+            diversity +
+            unemployment_rate, 
+            data=zips)
+lm4 <- lm(bias_grp_mem_zip ~
+            segregation +
+            median_household_income + 
+            population_density + 
+            pop2018 +
+            diversity +
+            unemployment_rate +
+            as.factor(CBSA.title),
+            data = zips)
+
+mean_bias <- round(mean(zips$bias_grp_mem_zip, na.rm = TRUE), 3)
+# mean_seg <- round(mean(zips$segregation, na.rm = TRUE), 3)
+
+sd_bias <- round(sd(zips$bias_grp_mem_zip, na.rm=TRUE), 3)
+# sd_seg <- round(sd(zips$segregation, na.rm=TRUE), 3)
+
+table <- stargazer(lm1, lm2, lm3, lm4, 
+          title="Experienced Economic Segregation vs Friending Bias",
+          dep.var.labels="Economic Connectedness & Friending Bias & High-SES Exposure",
+          covariate.labels=c(
+            "Experienced Economic Segregation",
+            "Population Density",
+            "Median Household Income",
+            "Population",
+            "Racial Diversity",
+            "Unemployment Rates"
+            ),
+          add.lines = list(c("Mean", mean_bias, mean_bias, mean_bias, mean_bias),
+                            c("Std. Dev", sd_bias, sd_bias, sd_bias, sd_bias),
+                            c("Simple Controls", "No", "Yes", "Yes", "Yes"),
+                            c("Full Controls", "No", "No", "Yes", "Yes"),
+                            c("City Fixed Effects", "No", "No", "No", "Yes")),
+          table.placement="H"
+          )
+
+write(table, file="/Users/georgecrowne/Desktop/Thesis/tables/segregation_vs_friending_bias.txt")
+```
+
+
+
+
+# Correlate intersection density with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(zips$segregation ~ scale(zips$D3B))
+lm2 <- lm(zips$segregation ~ scale(zips$D3B) + scale(zips$median_household_income))
+lm3 <- lm(zips$segregation ~ scale(zips$D3B) + scale(zips$population_density))
+lm4 <- lm(zips$segregation ~ scale(zips$D3B) + scale(zips$median_household_income) + scale(zips$population_density))
+lm5 <- lm(zips$segregation ~
+            scale(zips$D3B) +
+            scale(zips$median_household_income) + 
+            scale(zips$population_density) + 
+            scale(zips$total_population_2) +
+            scale(zips$diversity) +
+            scale(zips$college_rates) +
+            scale(zips$unemployment_rate),
+            data = zips)
+
+lm6 <- plm(segregation ~
+            D3B +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate,
+            data = zips,
+            index = c("county"))
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5, lm6)
+```
+
+# Correlate Employment Entropy with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(zips$segregation ~ scale(zips$D2B_E8MIXA))
+lm2 <- lm(zips$segregation ~ scale(zips$D2B_E8MIXA) + scale(zips$median_household_income))
+lm3 <- lm(zips$segregation ~ scale(zips$D2B_E8MIXA) + scale(zips$population_density))
+lm4 <- lm(zips$segregation ~ scale(zips$D2B_E8MIXA) + scale(zips$median_household_income) + scale(zips$population_density))
+lm5 <- lm(zips$segregation ~
+            scale(zips$D2B_E8MIXA) +
+            scale(zips$median_household_income) + 
+            scale(zips$population_density) + 
+            scale(zips$total_population_2) +
+            scale(zips$diversity) +
+            scale(zips$college_rates) +
+            scale(zips$unemployment_rate))
+
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5)
+```
+
+# Correlate Entertainment Density with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(zips$segregation ~ scale(zips$D1C8_ENT))
+lm2 <- lm(zips$segregation ~ scale(zips$D1C8_ENT) + scale(zips$median_household_income))
+lm3 <- lm(zips$segregation ~ scale(zips$D1C8_ENT) + scale(zips$population_density))
+lm4 <- lm(zips$segregation ~ scale(zips$D1C8_ENT) + scale(zips$median_household_income) + scale(zips$population_density))
+lm5 <- lm(zips$segregation ~
+            scale(zips$D1C8_ENT) +
+            scale(zips$median_household_income) + 
+            scale(zips$population_density) + 
+            scale(zips$total_population_2) +
+            scale(zips$diversity) +
+            scale(zips$college_rates) +
+            scale(zips$unemployment_rate))
+
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5)
+```
+
+
+
+#Include Fixed Effects
+# Correlate intersection density with segregation with different specifications
+# Create summary table
+
+```{r}
+lm1 <- lm(segregation ~ D3B, data = zips)
+lm2 <- lm(segregation ~ D3B + median_household_income, data = zips)
+lm3 <- lm(segregation ~ D3B + population_density, data = zips)
+lm4 <- lm(segregation ~ D3B + median_household_income + population_density, data = zips)
+lm5 <- lm(segregation ~
+            D3B +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate,
+            data = zips)
+
+lm6 <- lm(segregation ~
+            D3B +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate +
+            factor(county),
+            data = zips)
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5, lm6)
+```
+
+# Correlate Employment Entropy with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(segregation ~ D2B_E8MIXA, data = zips)
+lm2 <- lm(segregation ~ D2B_E8MIXA + median_household_income, data = zips)
+lm3 <- lm(segregation ~ D2B_E8MIXA + population_density, data = zips)
+lm4 <- lm(segregation ~ D2B_E8MIXA + median_household_income + population_density, data = zips)
+lm5 <- lm(segregation ~
+            D2B_E8MIXA +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate,
+            data = zips)
+
+lm6 <- lm(segregation ~
+            D2B_E8MIXA +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate +
+            as.factor(county),
+            data = zips)
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5, lm6)
+```
+
+# Correlate Entertainment Density with segregation with different specifications
+# Create summary table
+```{r}
+lm1 <- lm(segregation ~ D1C8_ENT, data = zips)
+lm2 <- lm(segregation ~ D1C8_ENT + median_household_income, data = zips)
+lm3 <- lm(segregation ~ D1C8_ENT + population_density, data = zips)
+lm4 <- lm(segregation ~ D1C8_ENT + median_household_income + population_density, data = zips)
+lm5 <- lm(segregation ~
+            D1C8_ENT +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate,
+            data = zips)
+
+lm6 <- lm(segregation ~
+            D1C8_ENT +
+            median_household_income + 
+            population_density + 
+            total_population_2 +
+            diversity +
+            college_rates +
+            unemployment_rate +
+            as.factor(county),
+            data = zips)
+
+table <- stargazer(lm1, lm2, lm3, lm4, lm5, lm6)
+```
+
+
+# Urban Form colinearity
+```{r}
+ggplot(zips,aes(x=D3B,y=D1C8_ENT)) + 
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") + 
+  ylab("Entertainment Place Density")  
+ggsave("urban_form_collinearity_1.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+ggplot(zips,aes(x=D3B,y=D2B_E8MIXA)) + 
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Intersection Density") + 
+  ylab("Employment Entropy")  
+ggsave("urban_form_collinearity_2.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+
+ggplot(zips,aes(x=D2B_E8MIXA,y=D1C8_ENT)) + 
+  stat_summary_bin(fun.y = mean, bins=50,
+                   color='black', size=2, geom='point', alpha=0.5) +
+  geom_smooth(method='lm',formula=y~x) +
+  xlab("Employment Entropy") + 
+  ylab("Entertainment Place Density")  
+ggsave("urban_form_collinearity_3.pdf", path = "/Users/georgecrowne/Desktop/Thesis/figs")
+```
+
+
+
+```{r}
+# create color palette 
+pal <- colorNumeric(
+  palette = "Greens",
+  domain = zips@data$segregation)
+
+# create labels for zipcodes
+labels <- 
+  paste0(
+    "Zip Code: ",
+    zips$zip, "<br/>",
+    "Mean Income: ",
+    scales::dollar(zips$segregation)) %>%
+  lapply(htmltools::HTML)
+
+zips %>% 
+  leaflet %>% 
+  # add base map
+  addProviderTiles("CartoDB") %>% 
+  # add zip codes
+  addPolygons(fillColor = ~pal(segregation),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(weight = 2,
+                                           color = "#666",
+                                           dashArray = "",
+                                           fillOpacity = 0.7,
+                                           bringToFront = TRUE),
+              label = labels) %>%
+  # add legend
+  addLegend(pal = pal, 
+            values = ~segregation, 
+            opacity = 0.7, 
+            title = htmltools::HTML("Mean Income <br> 
+                                    Tax Returns <br> 
+                                    by Zip Code <br>
+                                    2016"),
+            position = "bottomright")
+
+```
+
+
+```{r}
+library(sf) #Overall handling of sf objects
+library(cartography) #Plotting maps package
+
+#1. Create your data
+yourdata <- data.frame(ZCTA5CE10=zips$zip,
+                    Cases=zips$bias_grp_mem_zip)
+
+#2. Download a shapefile (shp,gpkg,geojson...)
+library(tigris) #For downloading the zipcode map
+options(tigris_use_cache = TRUE)
+geo <- st_as_sf(zctas(cb = TRUE, starts_with = yourdata$ZCTA5CE10))
+
+#Overall shape of USA states
+states <- st_as_sf(states(cb=TRUE))
+#For plotting, all the maps should have the same crs
+states=st_transform(states,st_crs(geo))
+
+#3. Now Merge your data
+yourdata.sf=merge(geo,yourdata)
+
+#4. Plotting
+par(mar=c(1,1,1,1))
+ghostLayer(yourdata.sf)
+plot(st_geometry(states), add=TRUE)
+choroLayer(yourdata.sf,
+           var="Cases",
+           add=TRUE,
+           border = NA,
+           legend.pos = "right",
+           legend.frame = TRUE)
+layoutLayer(title = "Cases by ZIPCODE",
+            theme = "blue.pal",
+            scale = FALSE,
+            sources = "Source; your question on SO",
+            author = "by dieghernan, 2020"
+            )
+```
+```{r}
+library(ggmap)
+map<-get_map(location='united states', zoom=4, maptype = "terrain",
+             source='google',color='color')
+```
+
+
+
